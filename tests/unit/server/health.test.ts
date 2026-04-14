@@ -14,9 +14,41 @@ vi.mock("@/lib/db", () => ({
       users: {
         findFirst: vi.fn(),
       },
+      assistants: {
+        findMany: vi.fn(),
+      },
+      snapshots: {
+        findFirst: vi.fn(),
+        findMany: vi.fn(),
+      },
     },
     insert: vi.fn(),
   },
+}));
+
+// Mock providers (assistants routes import this)
+vi.mock("@/lib/providers", () => ({
+  getProvider: vi.fn(),
+}));
+
+// Mock canProvision stub
+vi.mock("@/lib/stripe/stubs", () => ({
+  canProvision: vi.fn().mockResolvedValue(true),
+}));
+
+// Mock workflow/api
+vi.mock("workflow/api", () => ({
+  start: vi.fn(),
+}));
+
+// Mock provisioning workflow
+vi.mock("@/lib/workflows/provisioning", () => ({
+  provisionAssistant: vi.fn(),
+}));
+
+// Mock bootstrap workflow
+vi.mock("@/lib/workflows/bootstrap", () => ({
+  buildSnapshot: vi.fn(),
 }));
 
 import { auth, currentUser } from "@clerk/nextjs/server";
@@ -50,8 +82,8 @@ describe("Hono API — protected routes (unauthenticated)", () => {
     mockAuth.mockResolvedValue({ userId: null } as never);
   });
 
-  it("GET /api/agents returns 401 without auth", async () => {
-    const res = await app.request("/api/agents");
+  it("GET /api/assistants returns 401 without auth", async () => {
+    const res = await app.request("/api/assistants");
     expect(res.status).toBe(401);
   });
 
@@ -73,12 +105,13 @@ describe("Hono API — protected routes (user exists in DB)", () => {
     mockFindFirst.mockResolvedValue(MOCK_DB_USER as never);
   });
 
-  it("GET /api/agents returns 200 with userId and dbUserId", async () => {
-    const res = await app.request("/api/agents");
+  it("GET /api/assistants returns 200 with assistants array", async () => {
+    vi.mocked(db.query.assistants.findMany).mockResolvedValue([] as never);
+
+    const res = await app.request("/api/assistants");
     expect(res.status).toBe(200);
     const body = await res.json();
-    expect(body.userId).toBe("user_test123");
-    expect(body.dbUserId).toBe("db-uuid-123");
+    expect(body.assistants).toEqual([]);
   });
 
   it("GET /api/channels returns 200", async () => {
@@ -122,7 +155,9 @@ describe("Hono API — lazy user creation (webhook never fired)", () => {
   });
 
   it("creates user from Clerk profile when not in DB", async () => {
-    const res = await app.request("/api/agents");
+    vi.mocked(db.query.assistants.findMany).mockResolvedValue([] as never);
+
+    const res = await app.request("/api/assistants");
     expect(res.status).toBe(200);
     // Verify currentUser was called to fetch the profile
     expect(mockCurrentUser).toHaveBeenCalled();

@@ -1,7 +1,7 @@
 import { pgEnum, pgTable, text, timestamp, uuid } from "drizzle-orm/pg-core";
 import { users } from "./users";
 
-export const agentStatusEnum = pgEnum("agent_status", [
+export const assistantStatusEnum = pgEnum("assistant_status", [
   "creating",
   "provisioning",
   "running",
@@ -11,13 +11,13 @@ export const agentStatusEnum = pgEnum("agent_status", [
 
 export const providerEnum = pgEnum("provider", ["hetzner"]);
 
-export const agents = pgTable("agents", {
+export const assistants = pgTable("assistants", {
   id: uuid("id").primaryKey().defaultRandom(),
   userId: uuid("user_id")
     .notNull()
     .references(() => users.id, { onDelete: "cascade" }),
   name: text("name").notNull(),
-  status: agentStatusEnum("status").notNull().default("creating"),
+  status: assistantStatusEnum("status").notNull().default("creating"),
   provider: providerEnum("provider").notNull().default("hetzner"),
   providerServerId: text("provider_server_id"),
   providerSnapshotId: text("provider_snapshot_id"),
@@ -32,7 +32,7 @@ export const agents = pgTable("agents", {
     .$onUpdate(() => new Date()),
 });
 
-export type Agent = typeof agents.$inferSelect;
-export type NewAgent = typeof agents.$inferInsert;
-export type AgentStatus = (typeof agentStatusEnum.enumValues)[number];
+export type Assistant = typeof assistants.$inferSelect;
+export type NewAssistant = typeof assistants.$inferInsert;
+export type AssistantStatus = (typeof assistantStatusEnum.enumValues)[number];
 export type Provider = (typeof providerEnum.enumValues)[number];

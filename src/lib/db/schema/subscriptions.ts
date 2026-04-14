@@ -1,6 +1,6 @@
 import { pgEnum, pgTable, text, timestamp, uuid } from "drizzle-orm/pg-core";
 import { users } from "./users";
-import { agents } from "./agents";
+import { assistants } from "./assistants";
 
 export const subscriptionStatusEnum = pgEnum("subscription_status", [
   "active",
@@ -14,9 +14,9 @@ export const planIdEnum = pgEnum("plan_id", ["starter", "pro", "power"]);
 
 export const subscriptions = pgTable("subscriptions", {
   id: uuid("id").primaryKey().defaultRandom(),
-  agentId: uuid("agent_id")
+  assistantId: uuid("assistant_id")
     .notNull()
-    .references(() => agents.id, { onDelete: "cascade" }),
+    .references(() => assistants.id, { onDelete: "cascade" }),
   userId: uuid("user_id")
     .notNull()
     .references(() => users.id, { onDelete: "cascade" }),

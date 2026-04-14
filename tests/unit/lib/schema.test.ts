@@ -8,9 +8,9 @@ describe("Database Schema", () => {
     expect(getTableName(schema.users)).toBe("users");
   });
 
-  it("should export agents table", () => {
-    expect(schema.agents).toBeDefined();
-    expect(getTableName(schema.agents)).toBe("agents");
+  it("should export assistants table", () => {
+    expect(schema.assistants).toBeDefined();
+    expect(getTableName(schema.assistants)).toBe("assistants");
   });
 
   it("should export subscriptions table", () => {
@@ -23,8 +23,8 @@ describe("Database Schema", () => {
     expect(getTableName(schema.snapshots)).toBe("snapshots");
   });
 
-  it("should export agent status enum values", () => {
-    expect(schema.agentStatusEnum.enumValues).toEqual([
+  it("should export assistant status enum values", () => {
+    expect(schema.assistantStatusEnum.enumValues).toEqual([
       "creating",
       "provisioning",
       "running",
@@ -35,5 +35,10 @@ describe("Database Schema", () => {
 
   it("should export provider enum values", () => {
     expect(schema.providerEnum.enumValues).toEqual(["hetzner"]);
+  });
+
+  it("should export assistant_credentials table", () => {
+    expect(schema.assistantCredentials).toBeDefined();
+    expect(getTableName(schema.assistantCredentials)).toBe("assistant_credentials");
   });
 });
