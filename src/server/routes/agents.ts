@@ -10,5 +10,7 @@ export const agentsRoute = new Hono();
 // DELETE /:id — destroy agent
 
 agentsRoute.get("/", (c) => {
-  return c.json({ agents: [], message: "Phase 2: Not implemented yet" });
+  const userId = c.get("userId");
+  const dbUser = c.get("dbUser");
+  return c.json({ agents: [], userId, dbUserId: dbUser.id, message: "Phase 2: Not implemented yet" });
 });

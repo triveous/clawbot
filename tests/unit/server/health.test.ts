@@ -1,32 +1,132 @@
-import { describe, it, expect } from "vitest";
+import { describe, it, expect, vi, beforeEach } from "vitest";
+
+// Mock Clerk before importing app
+vi.mock("@clerk/nextjs/server", () => ({
+  auth: vi.fn(),
+  currentUser: vi.fn(),
+  clerkMiddleware: vi.fn(),
+}));
+
+// Mock DB to avoid needing a real database in unit tests
+vi.mock("@/lib/db", () => ({
+  db: {
+    query: {
+      users: {
+        findFirst: vi.fn(),
+      },
+    },
+    insert: vi.fn(),
+  },
+}));
+
+import { auth, currentUser } from "@clerk/nextjs/server";
+import { db } from "@/lib/db";
 import app from "@/server";
 
-describe("Hono API", () => {
-  it("should return 200 on health check", async () => {
+const mockAuth = vi.mocked(auth);
+const mockCurrentUser = vi.mocked(currentUser);
+const mockFindFirst = vi.mocked(db.query.users.findFirst);
+
+const MOCK_DB_USER = {
+  id: "db-uuid-123",
+  clerkId: "user_test123",
+  email: "test@example.com",
+  name: "Test User",
+  avatarUrl: null,
+  createdAt: new Date(),
+  updatedAt: new Date(),
+};
+
+describe("Hono API — public routes", () => {
+  it("GET /api/health returns 200 without auth", async () => {
     const res = await app.request("/api/health");
     expect(res.status).toBe(200);
-    const body = await res.json();
-    expect(body).toEqual({ status: "ok" });
+    expect(await res.json()).toEqual({ status: "ok" });
+  });
+});
+
+describe("Hono API — protected routes (unauthenticated)", () => {
+  beforeEach(() => {
+    mockAuth.mockResolvedValue({ userId: null } as never);
   });
 
-  it("should return agents stub on GET /api/agents", async () => {
+  it("GET /api/agents returns 401 without auth", async () => {
+    const res = await app.request("/api/agents");
+    expect(res.status).toBe(401);
+  });
+
+  it("GET /api/channels returns 401 without auth", async () => {
+    const res = await app.request("/api/channels");
+    expect(res.status).toBe(401);
+  });
+
+  it("GET /api/billing returns 401 without auth", async () => {
+    const res = await app.request("/api/billing");
+    expect(res.status).toBe(401);
+  });
+});
+
+describe("Hono API — protected routes (user exists in DB)", () => {
+  beforeEach(() => {
+    mockAuth.mockResolvedValue({ userId: "user_test123" } as never);
+    // User already in DB — no Clerk profile fetch needed
+    mockFindFirst.mockResolvedValue(MOCK_DB_USER as never);
+  });
+
+  it("GET /api/agents returns 200 with userId and dbUserId", async () => {
     const res = await app.request("/api/agents");
     expect(res.status).toBe(200);
     const body = await res.json();
-    expect(body).toHaveProperty("agents");
+    expect(body.userId).toBe("user_test123");
+    expect(body.dbUserId).toBe("db-uuid-123");
   });
 
-  it("should return channels stub on GET /api/channels", async () => {
+  it("GET /api/channels returns 200", async () => {
     const res = await app.request("/api/channels");
     expect(res.status).toBe(200);
-    const body = await res.json();
-    expect(body).toHaveProperty("channels");
   });
 
-  it("should return billing stub on GET /api/billing", async () => {
+  it("GET /api/billing returns 200", async () => {
     const res = await app.request("/api/billing");
     expect(res.status).toBe(200);
-    const body = await res.json();
-    expect(body).toHaveProperty("message");
+  });
+});
+
+describe("Hono API — lazy user creation (webhook never fired)", () => {
+  beforeEach(() => {
+    mockAuth.mockResolvedValue({ userId: "user_new456" } as never);
+    // User NOT in DB — simulates webhook never having fired
+    mockFindFirst.mockResolvedValue(undefined as never);
+    // Clerk profile is available from session
+    mockCurrentUser.mockResolvedValue({
+      id: "user_new456",
+      firstName: "Jane",
+      lastName: "Doe",
+      primaryEmailAddressId: "email_1",
+      emailAddresses: [{ id: "email_1", emailAddress: "jane@example.com" }],
+      imageUrl: "https://example.com/avatar.jpg",
+    } as never);
+    // Mock the insert chain
+    vi.mocked(db.insert).mockReturnValue({
+      values: vi.fn().mockReturnValue({
+        onConflictDoUpdate: vi.fn().mockReturnValue({
+          returning: vi.fn().mockResolvedValue([{
+            ...MOCK_DB_USER,
+            clerkId: "user_new456",
+            email: "jane@example.com",
+            name: "Jane Doe",
+          }]),
+        }),
+      }),
+    } as never);
+  });
+
+  it("creates user from Clerk profile when not in DB", async () => {
+    const res = await app.request("/api/agents");
+    expect(res.status).toBe(200);
+    // Verify currentUser was called to fetch the profile
+    expect(mockCurrentUser).toHaveBeenCalled();
+    // Verify insert was called to create the user
+    expect(db.insert).toHaveBeenCalled();
   });
 });

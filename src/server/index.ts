@@ -1,6 +1,7 @@
 import { Hono } from "hono";
 import { logger } from "hono/logger";
 import { cors } from "hono/cors";
+import { clerkAuth } from "./middleware/clerk";
 import { webhooksRoute } from "./routes/webhooks";
 import { agentsRoute } from "./routes/agents";
 import { channelsRoute } from "./routes/channels";
@@ -12,12 +13,17 @@ const app = new Hono().basePath("/api");
 app.use("*", logger());
 app.use("*", cors());
 
-// Health check
+// Public routes (no auth required)
 app.get("/health", (c) => c.json({ status: "ok" }));
+app.route("/webhooks", webhooksRoute);
+
+// Protected routes — Clerk auth required
+app.use("/agents/*", clerkAuth());
+app.use("/channels/*", clerkAuth());
+app.use("/billing/*", clerkAuth());
 
 // Routes — chained for Hono RPC type inference
 const appWithRoutes = app
-  .route("/webhooks", webhooksRoute)
   .route("/agents", agentsRoute)
   .route("/channels", channelsRoute)
   .route("/billing", billingRoute);
