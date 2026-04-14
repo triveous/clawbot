@@ -7,7 +7,8 @@
  * Check if a user is allowed to provision a new agent.
  * Stub: always returns true until Phase 4 implements Stripe checks.
  */
-export async function canProvision(_userId: string): Promise<boolean> {
+// eslint-disable-next-line @typescript-eslint/no-unused-vars
+export async function canProvision(userId: string): Promise<boolean> {
   // TODO: Phase 4 — check active Stripe subscription + plan agent limits
   return true;
 }

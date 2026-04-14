@@ -15,12 +15,12 @@ app.use("*", cors());
 // Health check
 app.get("/health", (c) => c.json({ status: "ok" }));
 
-// Routes
-const routes = app
+// Routes — chained for Hono RPC type inference
+const appWithRoutes = app
   .route("/webhooks", webhooksRoute)
   .route("/agents", agentsRoute)
   .route("/channels", channelsRoute)
   .route("/billing", billingRoute);
 
-export type AppType = typeof routes;
-export default app;
+export type AppType = typeof appWithRoutes;
+export default appWithRoutes;
