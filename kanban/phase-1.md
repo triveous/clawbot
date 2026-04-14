@@ -87,7 +87,16 @@ Reference: [Phase 1 Docs](../docs/phase-1-foundation.md)
   - `handleUserDeleted` — deletes user (cascades to agents + subscriptions via FK)
   - Webhook route to be wired in `src/server/routes/webhooks.ts` (Phase 1 skeleton ready)
 
-- [x] **Login page** — `src/app/(auth)/login/page.tsx` renders `<SignIn />` from `@clerk/nextjs`
+- [x] **Login page** — `src/app/(auth)/login/[[...sign-in]]/page.tsx` renders `<SignIn />` from `@clerk/nextjs`
+  - Uses catch-all route so Clerk can handle multi-step sub-paths (e.g. `/login/create/verify-email-address`)
+
+- [x] **Sign-up page** — `src/app/(auth)/sign-up/[[...sign-up]]/page.tsx` renders `<SignUp />` from `@clerk/nextjs`
+  - `NEXT_PUBLIC_CLERK_SIGN_UP_URL=/sign-up` added to `.env.example`
+
+- [x] **Geist font applied to Clerk components** — `<ClerkProvider appearance={{ variables: { fontFamily: "var(--font-geist-sans)" } }}>`
+  - Ensures Clerk's SignIn, SignUp, and UserButton components use the same Geist Sans font as the rest of the app
+
+- [x] **Sign-out** — `<UserButton afterSignOutUrl="/login" />` added to `src/app/dashboard/layout.tsx` sidebar
 
 ---
 
@@ -106,7 +115,7 @@ Reference: [Phase 1 Docs](../docs/phase-1-foundation.md)
 
 - [x] **Placeholder pages** — all 12 routes have pages with phase labels indicating who builds them:
   - `/` → Phase 5 (marketing), `/pricing` → Phase 5
-  - `/login` → Phase 1 (Clerk SignIn)
+  - `/login` → Phase 1 (Clerk SignIn, catch-all), `/sign-up` → Phase 1 (Clerk SignUp, catch-all)
   - `/onboarding/name`, `/onboarding/channels`, `/onboarding/deploy` → Phase 5
   - `/dashboard`, `/dashboard/billing`, `/dashboard/settings` → Phase 6
   - `/dashboard/agent/[agentId]` → Phase 6 (dynamic route, async params)
