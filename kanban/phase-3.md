@@ -25,7 +25,8 @@ Reference: [Phase 3 Docs](../docs/phase-3-channels.md)
 
 ## Monitoring
 
-- [ ] Set up Vercel cron for channel health monitoring
+- [ ] Set up Vercel cron for assistant health monitoring (`/api/cron/health`) — poll each running assistant's gateway, mark `error` after 3 consecutive failures
+- [ ] Set up Vercel cron for channel health monitoring (`/api/cron/channels`)
 
 ## Testing
 

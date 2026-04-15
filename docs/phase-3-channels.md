@@ -30,13 +30,13 @@ export interface ChannelField {
 
 ### Channel-Specific Fields
 
-| Channel | Required Credentials |
-|---------|---------------------|
-| Telegram | Bot token (from @BotFather) |
+| Channel  | Required Credentials                                        |
+| -------- | ----------------------------------------------------------- |
+| Telegram | Bot token (from @BotFather)                                 |
 | WhatsApp | Phone number ID, access token, verify token (Meta Business) |
-| Discord | Bot token, application ID (Discord Developer Portal) |
-| Slack | Bot token, signing secret (Slack API) |
-| Web | None (auto-configured, exposes chat widget endpoint) |
+| Discord  | Bot token, application ID (Discord Developer Portal)        |
+| Slack    | Bot token, signing secret (Slack API)                       |
+| Web      | None (auto-configured, exposes chat widget endpoint)        |
 
 Definitions live in `src/lib/channels/definitions.ts`.
 
@@ -56,6 +56,7 @@ src/components/channels/
 ```
 
 Each wizard:
+
 1. Shows step-by-step instructions with screenshots/links for creating the bot/app on the platform
 2. Collects the required credentials via form fields
 3. Submits to the setup API endpoint
@@ -81,16 +82,26 @@ Implementation: `src/lib/channels/inject.ts`
 export async function injectChannelConfig(
   serverIp: string,
   channelType: ChannelType,
-  credentials: Record<string, string>
-): Promise<{ success: boolean; error?: string }>
+  credentials: Record<string, string>,
+): Promise<{ success: boolean; error?: string }>;
 ```
 
 Uses SSH2 library to connect to the VPS. SSH key is stored as an environment variable (`SSH_PRIVATE_KEY`), not in the database.
 
 ## Health Monitoring
 
-- Vercel cron job: `src/app/api/cron/channels/route.ts` (runs every 5 minutes)
-- For each running agent, SSH in and check which channels are active
+### Assistant health (`src/app/api/cron/health/route.ts`)
+
+Carried over from Phase 2 scope. Runs every 5 minutes via Vercel cron:
+
+- Queries all assistants with status `running`
+- Hits each server's gateway health endpoint (port 18789) via the stored server IP
+- Updates assistant status to `error` after 3 consecutive failures
+- Future: alerting via email/webhook
+
+### Channel health (`src/app/api/cron/channels/route.ts`)
+
+- For each running assistant, SSH in and check which channels are active
 - Returns per-channel status: `connected | disconnected | error`
 - Dashboard displays real-time channel health badges
 
@@ -121,6 +132,7 @@ src/lib/channels/types.ts
 src/lib/channels/definitions.ts
 src/lib/channels/inject.ts
 src/server/routes/channels.ts
+src/app/api/cron/health/route.ts
 src/app/api/cron/channels/route.ts
 src/components/channels/ChannelSetupWizard.tsx
 src/components/channels/steps/TelegramSetup.tsx
@@ -132,6 +144,7 @@ src/components/channels/steps/WebSetup.tsx
 
 ## Definition of Done
 
+- Assistant health cron detects unreachable gateways and marks status `error`
 - All 5 channel setup wizards render with correct instructions
 - Config injection successfully writes to VPS and restarts service
 - Health endpoint returns accurate per-channel status

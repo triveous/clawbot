@@ -218,5 +218,4 @@ tests/unit/server/assistants.test.ts
 
 ## Not in scope
 
-- Health monitoring cron — Phase 3
 - Stripe subscription on provision — Phase 4

@@ -60,5 +60,4 @@ Status: **Complete**
 
 ## Not in scope for Phase 2
 
-- [ ] Health monitoring cron (Vercel cron, `/api/cron/health`) — deferred to Phase 3
 - [ ] Stripe subscription creation on provisioning — Phase 4
