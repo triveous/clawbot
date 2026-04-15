@@ -3,11 +3,13 @@ import { cors } from "hono/cors";
 import { HTTPException } from "hono/http-exception";
 import { requestLogger } from "./middleware/logger";
 import { clerkAuth } from "./middleware/clerk";
+import { adminAuth } from "./middleware/admin";
 import { getLogger } from "@/lib/logger";
 import { webhooksRoute } from "./routes/webhooks";
-import { agentsRoute } from "./routes/agents";
+import { assistantsRoute } from "./routes/assistants";
 import { channelsRoute } from "./routes/channels";
 import { billingRoute } from "./routes/billing";
+import { adminRoute } from "./routes/admin";
 
 const app = new Hono().basePath("/api");
 
@@ -45,15 +47,19 @@ app.get("/health", (c) => c.json({ status: "ok" }));
 app.route("/webhooks", webhooksRoute);
 
 // Protected routes — Clerk auth required
-app.use("/agents/*", clerkAuth());
+app.use("/assistants/*", clerkAuth());
 app.use("/channels/*", clerkAuth());
 app.use("/billing/*", clerkAuth());
 
+// Admin routes — API key auth
+app.use("/admin/*", adminAuth());
+
 // Routes — chained for Hono RPC type inference
 const appWithRoutes = app
-  .route("/agents", agentsRoute)
+  .route("/assistants", assistantsRoute)
   .route("/channels", channelsRoute)
-  .route("/billing", billingRoute);
+  .route("/billing", billingRoute)
+  .route("/admin", adminRoute);
 
 export type AppType = typeof appWithRoutes;
 export default appWithRoutes;

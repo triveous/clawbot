@@ -18,20 +18,20 @@ SnapClaw is a **managed hosting platform for OpenClaw personal AI agents**. We a
 
 ## Tech Stack
 
-| Concern     | Tool                               | Notes                                                                  |
-| ----------- | ---------------------------------- | ---------------------------------------------------------------------- |
-| Framework   | Next.js 16 (App Router)            | See AGENTS.md — read docs before writing code                          |
-| API         | Hono 4 at `/api/[[...route]]`      | `hono/vercel` adapter, RPC via `hc<AppType>`                           |
-| ORM         | Drizzle ORM + `postgres` driver    | 4 tables only: users, agents, subscriptions, snapshots                 |
-| Database    | Neon PostgreSQL                    | `bun run db:push` for schema changes in dev                            |
-| Auth        | Clerk (`@clerk/nextjs` v7)         | ClerkProvider in root layout, `clerkMiddleware` in middleware.ts       |
-| Billing     | Stripe                             | Subscriptions per agent, not per account                               |
-| UI          | shadcn/ui + Magic UI + Tailwind v4 | Linear-like aesthetic                                                  |
-| Fonts       | Geist Sans + Geist Mono            | Applied to both app and Clerk components via `appearance` prop         |
-| Testing     | Vitest (unit) + Playwright (E2E)   | Tests in `tests/unit/` and `tests/e2e/`                                |
-| Async tasks | useworkflow.dev                    | Only for genuinely async work (VPS provisioning); not forced elsewhere |
-| Infra       | Hetzner Cloud                      | Snapshot-based provisioning, provider-abstracted schema                |
-| Deploy      | Vercel                             |                                                                        |
+| Concern     | Tool                               | Notes                                                                        |
+| ----------- | ---------------------------------- | ---------------------------------------------------------------------------- |
+| Framework   | Next.js 16 (App Router)            | See AGENTS.md — read docs before writing code                                |
+| API         | Hono 4 at `/api/[[...route]]`      | `hono/vercel` adapter, RPC via `hc<AppType>`                                 |
+| ORM         | Drizzle ORM + `postgres` driver    | 5 tables: users, assistants, assistant_credentials, subscriptions, snapshots |
+| Database    | Neon PostgreSQL                    | `bun run db:push` for schema changes in dev                                  |
+| Auth        | Clerk (`@clerk/nextjs` v7)         | ClerkProvider in root layout, `clerkMiddleware` in middleware.ts             |
+| Billing     | Stripe                             | Subscriptions per assistant, not per account                                 |
+| UI          | shadcn/ui + Magic UI + Tailwind v4 | Linear-like aesthetic                                                        |
+| Fonts       | Geist Sans + Geist Mono            | Applied to both app and Clerk components via `appearance` prop               |
+| Testing     | Vitest (unit) + Playwright (E2E)   | Tests in `tests/unit/` and `tests/e2e/`                                      |
+| Async tasks | useworkflow.dev                    | Only for genuinely async work (VPS provisioning); not forced elsewhere       |
+| Infra       | Hetzner Cloud                      | Snapshot-based provisioning, provider-abstracted schema                      |
+| Deploy      | Vercel                             |                                                                              |
 
 ---
 
@@ -48,10 +48,10 @@ src/
     index.ts              # Hono app + AppType export
     rpc.ts                # createApiClient() wrapping hc<AppType>
     middleware/clerk.ts   # clerkAuth() — validates session, lazy-upserts user to DB
-    routes/               # agents, channels, billing, webhooks
+    routes/               # assistants, channels, billing, webhooks
   lib/
     db/
-      schema/             # users, agents, subscriptions, snapshots
+      schema/             # users, assistants, assistant-credentials, subscriptions, snapshots
       index.ts            # Drizzle client — throws if DATABASE_URL missing
     auth/clerk-webhook.ts # Clerk webhook handlers (user CRUD)
     stripe/stubs.ts       # canProvision() stub — Phase 4 replaces
@@ -80,8 +80,8 @@ c.get("dbUser"); // Full DB user row
 `hc()` returns a JS Proxy. Tests must access route properties directly (not `toHaveProperty`):
 
 ```ts
-expect(client.agents).toBeDefined(); // correct
-expect(client).toHaveProperty("agents"); // wrong — Proxy, not own property
+expect(client.assistants).toBeDefined(); // correct
+expect(client).toHaveProperty("assistants"); // wrong — Proxy, not own property
 ```
 
 ### Auth Routes
@@ -101,14 +101,15 @@ Login and sign-up use **catch-all routes** for Clerk multi-step flows:
 
 ---
 
-## Database Schema (4 tables)
+## Database Schema (5 tables)
 
-| Table           | Purpose                                                                                                                     |
-| --------------- | --------------------------------------------------------------------------------------------------------------------------- |
-| `users`         | Clerk user sync. Lazy-upserted by Hono middleware.                                                                          |
-| `agents`        | Provider-abstracted (`provider` enum + `provider_server_id`). Status: `creating → provisioning → running → stopped → error` |
-| `subscriptions` | Per-agent Stripe subscriptions (not per-account)                                                                            |
-| `snapshots`     | Versioned Hetzner snapshots. `is_active` marks which is used for new provisioning.                                          |
+| Table                   | Purpose                                                                                                                     |
+| ----------------------- | --------------------------------------------------------------------------------------------------------------------------- |
+| `users`                 | Clerk user sync. Lazy-upserted by Hono middleware.                                                                          |
+| `assistants`            | Provider-abstracted (`provider` enum + `provider_server_id`). Status: `creating → provisioning → running → stopped → error` |
+| `assistant_credentials` | Per-assistant credentials (SSH keys, gateway token). One row per assistant, cascade-deleted.                                |
+| `subscriptions`         | Per-assistant Stripe subscriptions (not per-account)                                                                        |
+| `snapshots`             | Versioned Hetzner snapshots. `is_active` marks which is used for new provisioning.                                          |
 
 ---
 
@@ -152,11 +153,11 @@ All tests must pass before a commit lands.
 
 ## Phase Status
 
-| Phase             | Status      | Owner                                            |
-| ----------------- | ----------- | ------------------------------------------------ |
-| 1 — Foundation    | Complete    | All routes, schema, auth, RPC, tests             |
-| 2 — Provisioning  | Not started | Hetzner VPS, snapshot-based, useworkflow.dev     |
-| 3 — Channel Setup | Not started | SSH config push, health monitoring               |
-| 4 — Billing       | Not started | Stripe per-agent subscriptions, OpenRouter usage |
-| 5 — Marketing     | Not started | Landing page, pricing, onboarding wizard         |
-| 6 — Dashboard     | Not started | Agent management UI, Magic UI                    |
+| Phase             | Status      | Owner                                                |
+| ----------------- | ----------- | ---------------------------------------------------- |
+| 1 — Foundation    | Complete    | All routes, schema, auth, RPC, tests                 |
+| 2 — Provisioning  | Complete    | Hetzner VPS, snapshot-based, useworkflow.dev         |
+| 3 — Channel Setup | Not started | SSH config push, health monitoring                   |
+| 4 — Billing       | Not started | Stripe per-assistant subscriptions, OpenRouter usage |
+| 5 — Marketing     | Not started | Landing page, pricing, onboarding wizard             |
+| 6 — Dashboard     | Not started | Agent management UI, Magic UI                        |

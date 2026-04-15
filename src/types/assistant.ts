@@ -1,4 +1,4 @@
-export type AgentStatus =
+export type AssistantStatus =
   | "creating"
   | "provisioning"
   | "running"
@@ -7,17 +7,17 @@ export type AgentStatus =
 
 export type Provider = "hetzner";
 
-export interface AgentResponse {
+export interface AssistantResponse {
   id: string;
   name: string;
-  status: AgentStatus;
+  status: AssistantStatus;
   provider: Provider;
   ipv4: string | null;
   region: string;
   createdAt: string;
 }
 
-export interface CreateAgentRequest {
+export interface CreateAssistantRequest {
   name: string;
   region?: string;
 }

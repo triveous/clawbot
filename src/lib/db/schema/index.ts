@@ -1,4 +1,5 @@
 export * from "./users";
-export * from "./agents";
+export * from "./assistants";
 export * from "./subscriptions";
 export * from "./snapshots";
+export * from "./assistant-credentials";

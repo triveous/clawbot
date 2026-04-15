@@ -5,7 +5,7 @@ import {
   timestamp,
   uuid,
 } from "drizzle-orm/pg-core";
-import { providerEnum } from "./agents";
+import { providerEnum } from "./assistants";
 
 export const snapshots = pgTable("snapshots", {
   id: uuid("id").primaryKey().defaultRandom(),
