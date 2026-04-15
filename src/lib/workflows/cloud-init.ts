@@ -1,14 +1,17 @@
 /**
  * Builds a cloud-init user-data script for a new OpenClaw server.
  *
- * This script runs on first boot and:
- * 1. Sets up SSH key auth for the openclaw user
- * 2. Writes the gateway config with the unique token
- * 3. Saves the gateway token for easy retrieval
- * 4. Applies startup optimizations (NODE_COMPILE_CACHE, OPENCLAW_NO_RESPAWN)
- * 5. Enables lingering so systemd user services persist without a login session
- * 6. Installs and starts the gateway via `openclaw gateway install` (systemd user service)
- * 7. Hardens SSH (key-only for openclaw user)
+ * The snapshot already has everything installed (Node.js, Docker, OpenClaw
+ * binary under the openclaw user's ~/.local). Cloud-init only does the
+ * per-server work that cannot be baked into the snapshot:
+ *
+ * 1. Inject the per-server SSH public key for the openclaw user
+ * 2. Write openclaw.json with the unique gateway token
+ * 3. Save the gateway token to a known path for easy retrieval
+ * 4. Set startup optimisations via environment.d
+ * 5. Enable lingering so the systemd user service survives logout
+ * 6. Start the gateway (openclaw gateway install)
+ * 7. Lock down SSH — key-only for openclaw, no root login
  */
 export function buildCloudInit(
   publicKey: string,
@@ -17,7 +20,7 @@ export function buildCloudInit(
   return `#!/bin/bash
 set -euo pipefail
 
-# --- 1. SSH setup for openclaw user ---
+# --- 1. Inject per-server SSH key for openclaw user ---
 mkdir -p /home/openclaw/.ssh
 cat > /home/openclaw/.ssh/authorized_keys <<'SSHKEY'
 ${publicKey}
@@ -26,7 +29,7 @@ chown -R openclaw:openclaw /home/openclaw/.ssh
 chmod 700 /home/openclaw/.ssh
 chmod 600 /home/openclaw/.ssh/authorized_keys
 
-# --- 2. Write gateway configuration ---
+# --- 2. Write per-server gateway configuration ---
 mkdir -p /home/openclaw/.openclaw
 cat > /home/openclaw/.openclaw/openclaw.json <<'CONF'
 {
@@ -53,7 +56,7 @@ chown -R openclaw:openclaw /home/openclaw/.openclaw
 chmod 600 /home/openclaw/.openclaw/openclaw.json
 chmod 600 /home/openclaw/.openclaw/.gateway-token
 
-# --- 4. Startup optimizations (recommended by openclaw doctor) ---
+# --- 4. Startup optimisations ---
 # NODE_COMPILE_CACHE speeds up repeated CLI invocations on small VMs.
 # OPENCLAW_NO_RESPAWN avoids self-respawn overhead.
 # environment.d is picked up by the systemd user manager automatically.
@@ -64,25 +67,25 @@ OPENCLAW_NO_RESPAWN=1
 ENVD
 chown -R openclaw:openclaw /home/openclaw/.config
 
-# Ensure the cache directory exists (created in bootstrap, but be safe)
-mkdir -p /var/tmp/openclaw-compile-cache
-chown openclaw:openclaw /var/tmp/openclaw-compile-cache
-
-# --- 5. Enable lingering for openclaw user ---
-# This allows systemd user services to run without an active login session.
+# --- 5. Enable lingering ---
+# Allows systemd user services to run without an active login session.
 loginctl enable-linger openclaw
 
-# --- 6. Install and start the gateway (openclaw's native systemd user service) ---
+# --- 6. Start the gateway ---
+# The binary is already installed at ~/.local/bin/openclaw (baked into snapshot).
+# su - loads the full login environment so ~/.local/bin is in PATH.
 su - openclaw -c "openclaw gateway install"
 
-# --- 7. Harden SSH for openclaw user (key-only) ---
+# --- 7. Harden SSH ---
+# Disable root login and password auth for the openclaw user entirely.
 cat >> /etc/ssh/sshd_config <<'SSHCONF'
+
+PermitRootLogin no
 
 Match User openclaw
     PasswordAuthentication no
 SSHCONF
 
-# --- 8. Restart sshd to apply Match block ---
 systemctl restart sshd
 `;
 }
