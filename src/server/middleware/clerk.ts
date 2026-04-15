@@ -76,6 +76,14 @@ export function clerkAuth() {
 
     c.set("userId", userId);
     c.set("dbUser", dbUser);
+
+    // Enrich the request-scoped logger with userId so all downstream logs
+    // for this request automatically include the authenticated user.
+    const logger = c.get("logger");
+    if (logger) {
+      c.set("logger", logger.with({ userId }));
+    }
+
     await next();
   };
 }
