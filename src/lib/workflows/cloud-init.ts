@@ -39,6 +39,7 @@ chmod 600 ~/.ssh/authorized_keys
 
 # --- 2. Save gateway token for operator retrieval ---
 mkdir -p ~/.openclaw
+chmod 700 ~/.openclaw
 echo "${gatewayToken}" > ~/.openclaw/.gateway-token
 chmod 600 ~/.openclaw/.gateway-token
 
@@ -50,6 +51,7 @@ openclaw config set gateway.mode local
 openclaw config set gateway.auth.mode token
 openclaw config set gateway.auth.token "${gatewayToken}"
 openclaw config set gateway.port 18789 --strict-json
+chmod 600 ~/.openclaw/openclaw.json
 
 # --- 4. Install the gateway service ---
 openclaw gateway install

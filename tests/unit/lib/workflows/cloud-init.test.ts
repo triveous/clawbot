@@ -39,6 +39,7 @@ describe("buildCloudInit", () => {
 
   it("saves gateway token to .gateway-token for operator retrieval", () => {
     const script = buildCloudInit(publicKey, gatewayToken);
+    expect(script).toContain("chmod 700 ~/.openclaw");
     expect(script).toContain("~/.openclaw/.gateway-token");
     expect(script).toContain(gatewayToken);
     expect(script).toContain("chmod 600 ~/.openclaw/.gateway-token");
@@ -57,8 +58,11 @@ describe("buildCloudInit", () => {
     expect(script).toContain(
       "openclaw config set gateway.port 18789 --strict-json",
     );
+    expect(script).toContain("chmod 600 ~/.openclaw/openclaw.json");
     expect(script).toContain("openclaw gateway install");
-    expect(script).not.toContain("openclaw.json");
+    // We must not hand-write the config file — only set permissions on the
+    // file the CLI creates.
+    expect(script).not.toMatch(/cat\s*>\s*~\/.openclaw\/openclaw\.json/);
   });
 
   it("does not hand-write gateway / session / skills config keys", () => {
