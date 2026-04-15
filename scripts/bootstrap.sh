@@ -2,162 +2,102 @@
 # =============================================================================
 # OpenClaw Base Snapshot Bootstrap Script
 # =============================================================================
-# Run this ONCE on a fresh Ubuntu 24.04 LTS server (as root) to build the
-# base snapshot. The snapshot ships with all software pre-installed under the
-# openclaw system user — no SSH keys, no tokens, no per-server config.
+# Builds the base Hetzner snapshot that every provisioned assistant boots from.
 #
-# Split of responsibilities:
-#   bootstrap.sh  — everything that belongs in the snapshot image
-#   cloud-init    — per-server injection: SSH key, openclaw.json, gateway start
+# Principle: root does the absolute minimum (apt, user creation, UFW, fail2ban,
+# systemd integration). Everything OpenClaw-related runs as the `openclaw`
+# user via `su - openclaw -c /tmp/openclaw-install.sh`. Root is emergency-access
+# only after this bootstrap completes.
 #
-# Usage:
+# Run manually:
 #   1. SSH into a fresh Ubuntu 24.04 LTS Hetzner server as root
-#   2. bash bootstrap.sh
-#   3. Shut down the server
-#   4. Take a Hetzner snapshot, record the snapshot ID
-#   5. Update the active snapshot row in the DB
+#   2. OPENCLAW_VERSION=2026.4.1 bash bootstrap.sh
+#   3. Review the smoke-test output; fail loudly means DON'T snapshot
+#   4. Shut down the server
+#   5. Take a Hetzner snapshot; record the ID; update the `snapshots` DB row
+#
+# Pinned versions (edit here, review in PR, reflected in snapshot manifest):
+NODE_MAJOR="22"
+OPENCLAW_VERSION="${OPENCLAW_VERSION:-latest}"
+
+# =============================================================================
+set -euo pipefail
+echo "=== OpenClaw Bootstrap: Starting (openclaw=${OPENCLAW_VERSION}, node=${NODE_MAJOR}) ==="
+
+# =============================================================================
+# Phase A — Root-only system setup
 # =============================================================================
 
-set -euo pipefail
-
-echo "=== OpenClaw Bootstrap: Starting ==="
-
-# --- 1. System update + essential dependencies ---
-echo ">>> Updating system packages..."
+echo ">>> [root] Updating system packages..."
 export DEBIAN_FRONTEND=noninteractive
 export NEEDRESTART_MODE=a
 apt-get update -y
 apt-get upgrade -y
 apt-get install -y \
   curl wget git ca-certificates gnupg lsb-release \
-  software-properties-common openssl \
-  uidmap dbus-user-session  # required for Docker rootless
+  software-properties-common openssl jq \
+  uidmap dbus-user-session \
+  fail2ban ufw unattended-upgrades
 
-# --- 2. Install Node.js (system-wide, as root) ---
-# Pre-installing Node.js means the OpenClaw installer (run later as the
-# openclaw user) can skip its own Node setup and won't need sudo/TTY.
-echo ">>> Installing Node.js 22 LTS via NodeSource..."
-curl -fsSL https://deb.nodesource.com/setup_22.x | bash -
+# --- Node.js (system-wide binary; openclaw will own its own npm prefix) ---
+echo ">>> [root] Installing Node.js ${NODE_MAJOR}..."
+curl -fsSL "https://deb.nodesource.com/setup_${NODE_MAJOR}.x" | bash -
 apt-get install -y nodejs
-echo "Node.js $(node --version), npm $(npm --version)"
 
-# --- 3. Install Docker CE (system daemon) ---
-echo ">>> Installing Docker CE..."
+# --- Docker CE (kernel modules + containerd); openclaw will use rootless daemon ---
+echo ">>> [root] Installing Docker CE (for kernel integration + rootless tooling)..."
 install -m 0755 -d /etc/apt/keyrings
 curl -fsSL https://download.docker.com/linux/ubuntu/gpg -o /etc/apt/keyrings/docker.asc
 chmod a+r /etc/apt/keyrings/docker.asc
-
 echo \
   "deb [arch=$(dpkg --print-architecture) signed-by=/etc/apt/keyrings/docker.asc] \
   https://download.docker.com/linux/ubuntu \
   $(. /etc/os-release && echo "${VERSION_CODENAME}") stable" | \
   tee /etc/apt/sources.list.d/docker.list > /dev/null
-
 apt-get update -y
 apt-get install -y docker-ce docker-ce-cli containerd.io docker-buildx-plugin docker-compose-plugin
 
-systemctl enable docker
-systemctl start docker
-echo "Docker $(docker --version)"
+# System Docker daemon is installed but DISABLED — openclaw runs rootless only.
+systemctl disable --now docker.service docker.socket
 
-# --- 4. Create openclaw system user (no SSH auth — injected by cloud-init) ---
-echo ">>> Creating openclaw user..."
-useradd -m -s /bin/bash openclaw
-# Lock the password so password-based logins are impossible.
-# SSH key auth is injected per-server by cloud-init.
-passwd -l openclaw
+# --- Create openclaw system user (UID 1000, locked password) ---
+echo ">>> [root] Creating openclaw user (UID 1000)..."
+useradd --uid 1000 --create-home --shell /bin/bash openclaw
+passwd -l openclaw  # no password logins ever
 
-# subuid/subgid ranges required for Docker rootless
+# subuid/subgid ranges for Docker rootless
 echo "openclaw:100000:65536" >> /etc/subuid
 echo "openclaw:100000:65536" >> /etc/subgid
 
-# Add to the system docker group as well — gateway can use either path
-usermod -aG docker openclaw
+# Note: no docker group membership — rootless only, no implicit root via docker socket.
 
-# --- 5. Configure restricted sudoers ---
-echo ">>> Configuring restricted sudoers for openclaw..."
-cat > /etc/sudoers.d/openclaw <<'SUDOERS'
-# openclaw user — restricted to service management only
-openclaw ALL=(root) NOPASSWD: /usr/bin/systemctl start openclaw
-openclaw ALL=(root) NOPASSWD: /usr/bin/systemctl stop openclaw
-openclaw ALL=(root) NOPASSWD: /usr/bin/systemctl restart openclaw
-openclaw ALL=(root) NOPASSWD: /usr/bin/systemctl reload openclaw
-openclaw ALL=(root) NOPASSWD: /usr/bin/systemctl status openclaw
-openclaw ALL=(root) NOPASSWD: /usr/bin/journalctl -u openclaw*
-openclaw ALL=(root) NOPASSWD: /usr/sbin/ufw status
-SUDOERS
-chmod 0440 /etc/sudoers.d/openclaw
+# --- Pin runtime packages so unattended-upgrades cannot shift them ---
+echo ">>> [root] Pinning runtime package versions..."
+apt-mark hold nodejs docker-ce docker-ce-cli containerd.io
 
-# --- 6. Install Docker rootless for the openclaw user ---
-# Rootless Docker daemon runs entirely as openclaw — no root socket access needed.
-echo ">>> Installing Docker rootless for openclaw user..."
-loginctl enable-linger openclaw
-su - openclaw -c "dockerd-rootless-setuptool.sh install --skip-iptables"
+# --- SSH config drop-in (idempotent; doesn't edit main sshd_config) ---
+echo ">>> [root] Writing SSH hardening drop-in..."
+mkdir -p /etc/ssh/sshd_config.d
+cat > /etc/ssh/sshd_config.d/99-openclaw.conf <<'SSHCONF'
+# Managed by snapclaw bootstrap — do not edit.
+PermitRootLogin prohibit-password
+PasswordAuthentication no
+PubkeyAuthentication yes
+Match User openclaw
+    PasswordAuthentication no
+    PubkeyAuthentication yes
+SSHCONF
+chmod 0644 /etc/ssh/sshd_config.d/99-openclaw.conf
 
-# Expose the rootless socket path via environment.d so systemd user units pick it up
-mkdir -p /home/openclaw/.config/environment.d
-cat > /home/openclaw/.config/environment.d/docker-rootless.conf <<'ENVD'
-DOCKER_HOST=unix:///run/user/1000/docker.sock
-ENVD
-chown openclaw:openclaw /home/openclaw/.config/environment.d/docker-rootless.conf
-
-# --- 7. Configure npm prefix for openclaw user ---
-# Point the openclaw user's global npm install location at their own home so
-# any `npm install -g` (including OpenClaw self-updates) never touches the
-# root-owned /usr/lib/node_modules. Ubuntu's default ~/.profile auto-adds
-# ~/.local/bin to PATH when the directory exists at login.
-echo ">>> Configuring npm prefix for openclaw user..."
-su - openclaw -c "mkdir -p ~/.local/bin ~/.local/lib && npm config set prefix ~/.local"
-
-# --- 8. Install OpenClaw as the openclaw user ---
-# Node.js is already in PATH (installed system-wide above), so the OpenClaw
-# installer skips its own Node setup. npm prefix is ~/.local (set above), so
-# the package lands in ~/.local/lib/node_modules/openclaw and the binary at
-# ~/.local/bin/openclaw — both user-owned. Self-updates work without sudo.
-#
-# OPENCLAW_VERSION is injected by the bootstrap workflow (e.g. "2026.4.1").
-# Falls back to "latest" if not set.
-echo ">>> Installing OpenClaw as openclaw user (version: ${OPENCLAW_VERSION:-latest})..."
-su - openclaw -c "curl -fsSL --proto '=https' --tlsv1.2 https://openclaw.ai/install.sh | bash -s -- \
-  --version '${OPENCLAW_VERSION:-latest}' \
-  --no-onboard \
-  --no-prompt"
-
-# Verify the binary landed in the user's local bin
-OPENCLAW_BIN="/home/openclaw/.local/bin/openclaw"
-if [ ! -f "$OPENCLAW_BIN" ]; then
-  OPENCLAW_BIN="$(su - openclaw -c 'which openclaw 2>/dev/null || true')"
-fi
-if [ -z "$OPENCLAW_BIN" ]; then
-  echo "ERROR: openclaw binary not found after install"
-  exit 1
-fi
-echo "OpenClaw installed at: $OPENCLAW_BIN ($(su - openclaw -c 'openclaw --version'))"
-
-# Symlink into /usr/local/bin so root-context commands can resolve the binary
-ln -sf "$OPENCLAW_BIN" /usr/local/bin/openclaw
-echo "Symlinked $OPENCLAW_BIN -> /usr/local/bin/openclaw"
-
-# --- 9. Prepare shared compile cache directory ---
-echo ">>> Preparing Node compile cache directory..."
-mkdir -p /var/tmp/openclaw-compile-cache
-chown openclaw:openclaw /var/tmp/openclaw-compile-cache
-
-# --- 10. Install and configure UFW ---
-echo ">>> Configuring UFW firewall..."
-apt-get install -y ufw
+# --- UFW: only SSH. Gateway binds to 127.0.0.1 so no port 18789 exposure needed ---
+echo ">>> [root] Configuring UFW (SSH only; gateway is localhost-bound)..."
 ufw default deny incoming
 ufw default allow outgoing
-ufw allow 22/tcp    # SSH
-ufw allow 18789/tcp # OpenClaw gateway
+ufw allow 22/tcp
 ufw --force enable
-echo "UFW status:"
-ufw status verbose
 
-# --- 11. Install and configure fail2ban ---
-echo ">>> Installing fail2ban..."
-apt-get install -y fail2ban
-
+# --- fail2ban ---
+echo ">>> [root] Configuring fail2ban..."
 cat > /etc/fail2ban/jail.local <<'JAIL'
 [sshd]
 enabled = true
@@ -168,31 +108,105 @@ maxretry = 5
 findtime = 600
 bantime = 3600
 JAIL
-
 systemctl enable fail2ban
 systemctl restart fail2ban
 
-# --- 12. Configure unattended-upgrades (security patches only) ---
-echo ">>> Configuring unattended-upgrades..."
-apt-get install -y unattended-upgrades
-
+# --- unattended-upgrades: security patches only (runtime pkgs are held) ---
+echo ">>> [root] Configuring unattended-upgrades (security only)..."
 cat > /etc/apt/apt.conf.d/50unattended-upgrades <<'UPGRADES'
 Unattended-Upgrade::Allowed-Origins {
     "${distro_id}:${distro_codename}-security";
 };
 Unattended-Upgrade::Automatic-Reboot "false";
 UPGRADES
-
 cat > /etc/apt/apt.conf.d/20auto-upgrades <<'AUTO'
 APT::Periodic::Update-Package-Lists "1";
 APT::Periodic::Unattended-Upgrade "1";
 AUTO
 
-# --- 13. Clean up for snapshot ---
-echo ">>> Cleaning up for snapshot..."
-# Remove root SSH keys so they never end up in servers booted from this snapshot
+# --- Enable lingering so openclaw's systemd user services survive logout ---
+loginctl enable-linger openclaw
+
+# --- Shared compile cache dir (owned by openclaw) ---
+mkdir -p /var/tmp/openclaw-compile-cache
+chown openclaw:openclaw /var/tmp/openclaw-compile-cache
+
+# =============================================================================
+# Phase B — Hand off to openclaw user
+# =============================================================================
+
+echo ">>> [root] Writing openclaw-install script and handing off to openclaw user..."
+cat > /tmp/openclaw-install.sh <<'USERSCRIPT'
+#!/bin/bash
+# Runs entirely as the openclaw user. No sudo, no root.
+set -euo pipefail
+
+OPENCLAW_VERSION="${OPENCLAW_VERSION:-latest}"
+
+echo ">>> [openclaw] Configuring npm prefix to ~/.local..."
+mkdir -p ~/.local/bin ~/.local/lib
+npm config set prefix ~/.local
+
+echo ">>> [openclaw] Installing Docker rootless..."
+# Docker CE ships the rootless setup tool; invoke it for our user.
+dockerd-rootless-setuptool.sh install --skip-iptables
+
+echo ">>> [openclaw] Installing OpenClaw (${OPENCLAW_VERSION})..."
+curl -fsSL --proto '=https' --tlsv1.2 https://openclaw.ai/install.sh | bash -s -- \
+  --version "${OPENCLAW_VERSION}" \
+  --no-onboard \
+  --no-prompt
+
+# Writing runtime env vars via systemd user environment.d — picked up by
+# any user systemd service (gateway, docker rootless, etc.)
+echo ">>> [openclaw] Writing environment.d configs..."
+mkdir -p ~/.config/environment.d
+cat > ~/.config/environment.d/openclaw.conf <<'ENVD'
+NODE_COMPILE_CACHE=/var/tmp/openclaw-compile-cache
+OPENCLAW_NO_RESPAWN=1
+ENVD
+cat > ~/.config/environment.d/docker-rootless.conf <<'ENVD'
+DOCKER_HOST=unix:///run/user/1000/docker.sock
+ENVD
+
+# Verify the binary exists and reports a version — fail loudly otherwise.
+echo ">>> [openclaw] Verifying install..."
+if ! ~/.local/bin/openclaw --version >/dev/null 2>&1; then
+  echo "ERROR: openclaw binary missing or non-functional — do NOT snapshot."
+  exit 1
+fi
+
+# Snapshot manifest (for later auditing — who built what, when).
+echo ">>> [openclaw] Writing snapshot manifest..."
+cat > ~/snapshot-manifest.json <<MANIFEST
+{
+  "openclaw_version": "$(~/.local/bin/openclaw --version 2>/dev/null | head -1)",
+  "node_version": "$(node --version)",
+  "docker_version": "$(docker --version)",
+  "build_timestamp": "$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+}
+MANIFEST
+
+echo ">>> [openclaw] Phase B complete."
+USERSCRIPT
+chmod +x /tmp/openclaw-install.sh
+chown openclaw:openclaw /tmp/openclaw-install.sh
+
+OPENCLAW_VERSION="${OPENCLAW_VERSION}" su - openclaw -c "OPENCLAW_VERSION='${OPENCLAW_VERSION}' /tmp/openclaw-install.sh"
+
+# Symlink the user-owned binary into /usr/local/bin so root-context commands
+# (diagnostics, support tooling) can resolve `openclaw`. The daemon never
+# runs as root — this is for human operators only.
+ln -sf /home/openclaw/.local/bin/openclaw /usr/local/bin/openclaw
+
+# =============================================================================
+# Phase C — Final root cleanup
+# =============================================================================
+
+echo ">>> [root] Cleaning up for snapshot..."
+rm -f /tmp/openclaw-install.sh
+# Remove any root/openclaw SSH keys — cloud-init injects the per-server key.
 rm -f /root/.ssh/authorized_keys /root/.ssh/known_hosts
-# Remove any openclaw SSH keys — cloud-init injects the per-server key
 rm -f /home/openclaw/.ssh/authorized_keys
 cloud-init clean --logs
 history -c
@@ -200,4 +214,5 @@ apt-get clean
 rm -rf /var/lib/apt/lists/*
 
 echo "=== OpenClaw Bootstrap: Complete ==="
-echo "Shut down this server, then create a Hetzner snapshot."
+echo "Review /home/openclaw/snapshot-manifest.json, shut down, then snapshot."
+cat /home/openclaw/snapshot-manifest.json

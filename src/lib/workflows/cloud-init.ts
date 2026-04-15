@@ -1,17 +1,16 @@
 /**
  * Builds a cloud-init user-data script for a new OpenClaw server.
  *
- * The snapshot already has everything installed (Node.js, Docker, OpenClaw
- * binary under the openclaw user's ~/.local). Cloud-init only does the
- * per-server work that cannot be baked into the snapshot:
+ * The snapshot already has everything installed under the openclaw user
+ * (Node.js, Docker rootless, OpenClaw binary at ~/.local/bin). Cloud-init
+ * only injects the per-server secrets (SSH public key + gateway token) and
+ * starts the gateway.
  *
- * 1. Inject the per-server SSH public key for the openclaw user
- * 2. Write openclaw.json with the unique gateway token
- * 3. Save the gateway token to a known path for easy retrieval
- * 4. Set startup optimisations via environment.d
- * 5. Enable lingering so the systemd user service survives logout
- * 6. Start the gateway (openclaw gateway install)
- * 7. Lock down SSH — key-only for openclaw, no root login
+ * Principle: root does the absolute minimum — essentially just the `su -`
+ * hand-off. All file writes and service starts happen as the openclaw user.
+ *
+ * Note: sshd hardening lives in the snapshot (sshd_config.d/99-openclaw.conf);
+ * no ssh config edits during provisioning.
  */
 export function buildCloudInit(
   publicKey: string,
@@ -20,18 +19,21 @@ export function buildCloudInit(
   return `#!/bin/bash
 set -euo pipefail
 
-# --- 1. Inject per-server SSH key for openclaw user ---
-mkdir -p /home/openclaw/.ssh
-cat > /home/openclaw/.ssh/authorized_keys <<'SSHKEY'
+# All work delegated to openclaw user — no root touches OpenClaw state.
+su - openclaw -s /bin/bash <<'OPENCLAW_SHELL'
+set -euo pipefail
+
+# --- 1. Inject per-server SSH key ---
+mkdir -p ~/.ssh
+chmod 700 ~/.ssh
+cat > ~/.ssh/authorized_keys <<'SSHKEY'
 ${publicKey}
 SSHKEY
-chown -R openclaw:openclaw /home/openclaw/.ssh
-chmod 700 /home/openclaw/.ssh
-chmod 600 /home/openclaw/.ssh/authorized_keys
+chmod 600 ~/.ssh/authorized_keys
 
-# --- 2. Write per-server gateway configuration ---
-mkdir -p /home/openclaw/.openclaw
-cat > /home/openclaw/.openclaw/openclaw.json <<'CONF'
+# --- 2. Write per-server gateway config ---
+mkdir -p ~/.openclaw
+cat > ~/.openclaw/openclaw.json <<'CONF'
 {
   "gateway": {
     "mode": "local",
@@ -48,44 +50,16 @@ cat > /home/openclaw/.openclaw/openclaw.json <<'CONF'
   }
 }
 CONF
+chmod 600 ~/.openclaw/openclaw.json
 
 # --- 3. Save gateway token for easy retrieval ---
-echo "${gatewayToken}" > /home/openclaw/.openclaw/.gateway-token
+echo "${gatewayToken}" > ~/.openclaw/.gateway-token
+chmod 600 ~/.openclaw/.gateway-token
 
-chown -R openclaw:openclaw /home/openclaw/.openclaw
-chmod 600 /home/openclaw/.openclaw/openclaw.json
-chmod 600 /home/openclaw/.openclaw/.gateway-token
-
-# --- 4. Startup optimisations ---
-# NODE_COMPILE_CACHE speeds up repeated CLI invocations on small VMs.
-# OPENCLAW_NO_RESPAWN avoids self-respawn overhead.
-# environment.d is picked up by the systemd user manager automatically.
-mkdir -p /home/openclaw/.config/environment.d
-cat > /home/openclaw/.config/environment.d/openclaw.conf <<'ENVD'
-NODE_COMPILE_CACHE=/var/tmp/openclaw-compile-cache
-OPENCLAW_NO_RESPAWN=1
-ENVD
-chown -R openclaw:openclaw /home/openclaw/.config
-
-# --- 5. Enable lingering ---
-# Allows systemd user services to run without an active login session.
-loginctl enable-linger openclaw
-
-# --- 6. Start the gateway ---
-# The binary is already installed at ~/.local/bin/openclaw (baked into snapshot).
-# su - loads the full login environment so ~/.local/bin is in PATH.
-su - openclaw -c "openclaw gateway install"
-
-# --- 7. Harden SSH ---
-# Disable root login and password auth for the openclaw user entirely.
-cat >> /etc/ssh/sshd_config <<'SSHCONF'
-
-PermitRootLogin no
-
-Match User openclaw
-    PasswordAuthentication no
-SSHCONF
-
-systemctl restart sshd
+# --- 4. Start the gateway ---
+# openclaw is at ~/.local/bin/openclaw (baked into snapshot). su - loads the
+# login environment so ~/.local/bin is in PATH automatically.
+openclaw gateway install
+OPENCLAW_SHELL
 `;
 }
