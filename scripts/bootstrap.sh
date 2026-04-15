@@ -70,6 +70,9 @@ echo "openclaw:100000:65536" >> /etc/subuid
 echo "openclaw:100000:65536" >> /etc/subgid
 
 # Note: no docker group membership — rootless only, no implicit root via docker socket.
+# Note: no sudo for openclaw — OpenClaw is designed to never run as root or
+# escalate to root. System packages needed by plugins should be pre-installed
+# in the snapshot, not installed at runtime via sudo.
 
 # --- Pin runtime packages so unattended-upgrades cannot shift them ---
 echo ">>> [root] Pinning runtime package versions..."
