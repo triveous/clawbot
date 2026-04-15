@@ -1,35 +1,39 @@
-# Phase 6 — Dashboard
+# Phase 6 — Marketing + Onboarding
 
-Reference: [Phase 6 Docs](../docs/phase-6-dashboard.md)
+Reference: [Phase 6 Docs](../docs/phase-6-marketing.md)
 
-## Navigation & Layout
+## Landing Page
 
-- [ ] Build dashboard sidebar navigation
-- [ ] Build dashboard header with agent selector
+- [ ] Hero section (headline, subtext, CTA, animated background)
+- [ ] Features grid (3 columns)
+- [ ] How It Works (3-step)
+- [ ] Tech stack badges section
+- [ ] Pricing table (shared component)
+- [ ] Final CTA section
+- [ ] Magic UI animations (AnimatedBeam, BentoGrid, NumberTicker, ShimmerButton)
 
-## Agent Management
+## Pricing
 
-- [ ] Build agent overview cards with status indicators
-- [ ] Build agent detail page (restart/stop controls)
-- [ ] Implement agent status polling
+- [ ] Build pricing page using shared `PricingTable` component
+- [ ] Wire Stripe Checkout CTAs (authenticated flow)
+- [ ] FAQ accordion
 
-## Channel Management
+## Onboarding Polish
 
-- [ ] Build channel management UI (add/remove, health status)
+- [ ] Remove `channels` step from `src/app/(auth)/onboarding/`
+- [ ] Rename flow: name → plan → deploy
+- [ ] Wire "plan" step to Stripe Checkout (uses Phase 5 endpoints)
+- [ ] Polish copy and progress animations
 
-## Billing UI
+## SEO
 
-- [ ] Build billing page (plan info, usage charts, Stripe portal link)
-
-## Settings
-
-- [ ] Build settings page (profile, notifications)
-
-## Polish
-
-- [ ] Add Magic UI components for polished feel
+- [ ] `src/app/(marketing)/layout.tsx` metadata (title, description, OG, Twitter)
+- [ ] OG image at `public/og-image.png` (1200×630)
+- [ ] `src/app/sitemap.ts` and `src/app/robots.ts`
 
 ## Testing
 
-- [ ] Write component tests
-- [ ] Write E2E test (dashboard flow)
+- [ ] Component tests for marketing components
+- [ ] E2E: landing → signup → onboarding → deploy
+- [ ] Lighthouse SEO ≥ 90
+- [ ] Verify OG tags render on Twitter/FB debuggers

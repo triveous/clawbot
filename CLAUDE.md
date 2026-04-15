@@ -40,9 +40,9 @@ SnapClaw is a **managed hosting platform for OpenClaw personal AI agents**. We a
 ```
 src/
   app/
-    (marketing)/          # Phase 5 — landing, pricing
+    (marketing)/          # Phase 6 — landing, pricing
     (auth)/               # Clerk SignIn/SignUp (catch-all routes)
-    dashboard/            # Phase 6 — NOT a route group (avoids parallel route conflict)
+    dashboard/            # Phase 4 — NOT a route group (avoids parallel route conflict)
     api/[[...route]]/     # Hono catch-all
   server/
     index.ts              # Hono app + AppType export
@@ -54,7 +54,7 @@ src/
       schema/             # users, assistants, assistant-credentials, subscriptions, snapshots
       index.ts            # Drizzle client — throws if DATABASE_URL missing
     auth/clerk-webhook.ts # Clerk webhook handlers (user CRUD)
-    stripe/stubs.ts       # canProvision() stub — Phase 4 replaces
+    stripe/stubs.ts       # canProvision() stub — Phase 5 replaces
   types/                  # Shared types: AgentStatus, Provider, PlanId, ChannelType
   hooks/
     use-rpc.ts            # useRpc() — memoized Hono RPC client
@@ -97,7 +97,7 @@ Login and sign-up use **catch-all routes** for Clerk multi-step flows:
 
 ### Cross-Phase Stubs
 
-`src/lib/stripe/stubs.ts` exports `canProvision()` returning `true`. Phase 2 imports this; Phase 4 replaces it with real Stripe logic.
+`src/lib/stripe/stubs.ts` exports `canProvision()` returning `true`. Phase 2 imports this; Phase 5 replaces it with real Stripe logic.
 
 ---
 
@@ -153,11 +153,14 @@ All tests must pass before a commit lands.
 
 ## Phase Status
 
-| Phase             | Status      | Owner                                                |
-| ----------------- | ----------- | ---------------------------------------------------- |
-| 1 — Foundation    | Complete    | All routes, schema, auth, RPC, tests                 |
-| 2 — Provisioning  | Complete    | Hetzner VPS, snapshot-based, useworkflow.dev         |
-| 3 — Channel Setup | Not started | SSH config push, health monitoring                   |
-| 4 — Billing       | Not started | Stripe per-assistant subscriptions, OpenRouter usage |
-| 5 — Marketing     | Not started | Landing page, pricing, onboarding wizard             |
-| 6 — Dashboard     | Not started | Agent management UI, Magic UI                        |
+| Phase                                    | Status      | Owner                                                                              |
+| ---------------------------------------- | ----------- | ---------------------------------------------------------------------------------- |
+| 1 — Foundation                           | Complete    | All routes, schema, auth, RPC, tests                                               |
+| 2 — Provisioning                         | Complete    | Hetzner VPS, snapshot-based, useworkflow.dev                                       |
+| 3 — Provisioning Hardening + Dynamic DNS | Not started | Nginx/LE/UFW in snapshot, Cloudflare DNS with env-driven domain                    |
+| 4 — Dashboard (Tabbed Agent Detail)      | Not started | Overview/Preview/Terminal/Logs/Versions/Files/Monitor/Storage/Server/Security tabs |
+| 5 — Billing                              | Not started | Stripe per-assistant subscriptions, real `canProvision()`                          |
+| 6 — Marketing + Onboarding               | Not started | Landing, pricing, onboarding polish                                                |
+| — Channel Setup Simplification           | Deferred    | Post-MVP; direct OpenClaw access for now                                           |
+
+Cherry-picks from [bfzli/clawhost](https://github.com/bfzli/clawhost) (MIT) inform Phases 3 (cloud-init hardening) and 4 (dashboard IA, browser terminal). See individual phase docs for details.

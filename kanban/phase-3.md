@@ -1,34 +1,37 @@
-# Phase 3 — Channel Setup
+# Phase 3 — Provisioning Hardening + Dynamic DNS
 
-Reference: [Phase 3 Docs](../docs/phase-3-channels.md)
+Reference: [Phase 3 Docs](../docs/phase-3-provisioning-hardening.md)
 
-## Channel Definitions
+## Cloud-init Hardening
 
-- [ ] Define channel types and required fields
+- [ ] Port clawhost `scripts/cloud-init.yaml` content into `src/lib/workflows/cloud-init.ts`
+- [ ] Add Nginx reverse proxy config (port 18789 → 80/443)
+- [ ] Add UFW firewall rules (22, 80, 443, default deny inbound)
+- [ ] Add Let's Encrypt certbot automation with auto-renewal
+- [ ] Harden OpenClaw systemd unit (restart policy, log rotation)
+- [ ] Rebuild snapshot via admin flow using updated cloud-init
 
-## SSH & Config
+## Cloudflare DNS Provider
 
-- [ ] Create SSH config push utility
-- [ ] Implement Telegram channel config template
-- [ ] Implement WhatsApp channel config template
-- [ ] Implement Discord channel config template
-- [ ] Implement Slack channel config template
+- [ ] Create `src/lib/providers/cloudflare.ts` with `createDnsRecord` and `deleteDnsRecord`
+- [ ] Read env vars at call time (fail fast on missing); throw clear errors
+- [ ] Add `CLOUDFLARE_API_TOKEN`, `CLOUDFLARE_ZONE_ID`, `CLOUDFLARE_BASE_DOMAIN` to `.env.example`
 
-## UI
+## Schema
 
-- [ ] Create guided setup UI components per channel
+- [ ] Add `hostname` and `dnsRecordId` columns to `assistants` table
+- [ ] Generate + run migration
 
-## API Endpoints
+## Workflow Integration
 
-- [ ] Implement POST /api/agents/:id/channels/setup endpoint
-- [ ] Implement GET /api/agents/:id/channels/health endpoint
-
-## Monitoring
-
-- [ ] Set up Vercel cron for assistant health monitoring (`/api/cron/health`) — poll each running assistant's gateway, mark `error` after 3 consecutive failures
-- [ ] Set up Vercel cron for channel health monitoring (`/api/cron/channels`)
+- [ ] Add `createDnsRecord` durable step between `waitForReady` and `finalize` in `provisioning.ts`
+- [ ] Persist `hostname` and `dnsRecordId` in `finalize`
+- [ ] Update `src/server/routes/assistants.ts` DELETE handler to call `deleteDnsRecord` before destroying server
+- [ ] Surface `hostname` in GET /api/assistants and /api/assistants/:id responses
 
 ## Testing
 
-- [ ] Write unit tests (config templates)
-- [ ] Write integration tests (SSH push with mock)
+- [ ] Unit tests for `cloudflare.ts` (mocked Cloudflare API)
+- [ ] Integration: build new snapshot, SSH in, verify Nginx + LE + UFW
+- [ ] Integration: provision a test assistant end-to-end, `dig` resolves to VPS IPv4, `https://{slug}.{base}` serves LE cert
+- [ ] Integration: delete assistant, verify Cloudflare record removed
