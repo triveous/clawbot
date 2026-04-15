@@ -1,5 +1,5 @@
 {
-  "id": "afeb55d9-5e22-4acf-90e9-51a499e675dc",
+  "id": "7483fdf0-674f-4f88-8cbd-61fc37ce0958",
   "prevId": "00000000-0000-0000-0000-000000000000",
   "version": "7",
   "dialect": "postgresql",
@@ -73,8 +73,8 @@
       "checkConstraints": {},
       "isRLSEnabled": false
     },
-    "public.agents": {
-      "name": "agents",
+    "public.assistants": {
+      "name": "assistants",
       "schema": "",
       "columns": {
         "id": {
@@ -98,7 +98,7 @@
         },
         "status": {
           "name": "status",
-          "type": "agent_status",
+          "type": "assistant_status",
           "typeSchema": "public",
           "primaryKey": false,
           "notNull": true,
@@ -130,6 +130,30 @@
           "primaryKey": false,
           "notNull": false
         },
+        "hostname": {
+          "name": "hostname",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "dns_record_id": {
+          "name": "dns_record_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "dns_zone_id": {
+          "name": "dns_zone_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "dns_base_domain": {
+          "name": "dns_base_domain",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
         "region": {
           "name": "region",
           "type": "text",
@@ -154,9 +178,9 @@
       },
       "indexes": {},
       "foreignKeys": {
-        "agents_user_id_users_id_fk": {
-          "name": "agents_user_id_users_id_fk",
-          "tableFrom": "agents",
+        "assistants_user_id_users_id_fk": {
+          "name": "assistants_user_id_users_id_fk",
+          "tableFrom": "assistants",
           "tableTo": "users",
           "columnsFrom": ["user_id"],
           "columnsTo": ["id"],
@@ -181,8 +205,8 @@
           "notNull": true,
           "default": "gen_random_uuid()"
         },
-        "agent_id": {
-          "name": "agent_id",
+        "assistant_id": {
+          "name": "assistant_id",
           "type": "uuid",
           "primaryKey": false,
           "notNull": true
@@ -249,11 +273,11 @@
       },
       "indexes": {},
       "foreignKeys": {
-        "subscriptions_agent_id_agents_id_fk": {
-          "name": "subscriptions_agent_id_agents_id_fk",
+        "subscriptions_assistant_id_assistants_id_fk": {
+          "name": "subscriptions_assistant_id_assistants_id_fk",
           "tableFrom": "subscriptions",
-          "tableTo": "agents",
-          "columnsFrom": ["agent_id"],
+          "tableTo": "assistants",
+          "columnsFrom": ["assistant_id"],
           "columnsTo": ["id"],
           "onDelete": "cascade",
           "onUpdate": "no action"
@@ -345,11 +369,97 @@
       "policies": {},
       "checkConstraints": {},
       "isRLSEnabled": false
+    },
+    "public.assistant_credentials": {
+      "name": "assistant_credentials",
+      "schema": "",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "uuid",
+          "primaryKey": true,
+          "notNull": true,
+          "default": "gen_random_uuid()"
+        },
+        "assistant_id": {
+          "name": "assistant_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "root_credential_type": {
+          "name": "root_credential_type",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "root_credential": {
+          "name": "root_credential",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "ssh_private_key": {
+          "name": "ssh_private_key",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "ssh_public_key": {
+          "name": "ssh_public_key",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "gateway_token": {
+          "name": "gateway_token",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "gateway_port": {
+          "name": "gateway_port",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "default": 18789
+        },
+        "created_at": {
+          "name": "created_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        }
+      },
+      "indexes": {},
+      "foreignKeys": {
+        "assistant_credentials_assistant_id_assistants_id_fk": {
+          "name": "assistant_credentials_assistant_id_assistants_id_fk",
+          "tableFrom": "assistant_credentials",
+          "tableTo": "assistants",
+          "columnsFrom": ["assistant_id"],
+          "columnsTo": ["id"],
+          "onDelete": "cascade",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {
+        "assistant_credentials_assistant_id_unique": {
+          "name": "assistant_credentials_assistant_id_unique",
+          "nullsNotDistinct": false,
+          "columns": ["assistant_id"]
+        }
+      },
+      "policies": {},
+      "checkConstraints": {},
+      "isRLSEnabled": false
     }
   },
   "enums": {
-    "public.agent_status": {
-      "name": "agent_status",
+    "public.assistant_status": {
+      "name": "assistant_status",
       "schema": "public",
       "values": ["creating", "provisioning", "running", "stopped", "error"]
     },

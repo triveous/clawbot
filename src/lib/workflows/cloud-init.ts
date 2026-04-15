@@ -39,6 +39,9 @@ cat > /home/openclaw/.openclaw/openclaw.json <<'CONF'
   },
   "session": {
     "dmScope": "per-channel-peer"
+  },
+  "skills": {
+    "allowBundled": []
   }
 }
 CONF

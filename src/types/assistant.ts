@@ -13,6 +13,7 @@ export interface AssistantResponse {
   status: AssistantStatus;
   provider: Provider;
   ipv4: string | null;
+  hostname: string | null;
   region: string;
   createdAt: string;
 }

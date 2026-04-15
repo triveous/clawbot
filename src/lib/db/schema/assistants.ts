@@ -22,6 +22,10 @@ export const assistants = pgTable("assistants", {
   providerServerId: text("provider_server_id"),
   providerSnapshotId: text("provider_snapshot_id"),
   ipv4: text("ipv4"),
+  hostname: text("hostname"),
+  dnsRecordId: text("dns_record_id"),
+  dnsZoneId: text("dns_zone_id"),
+  dnsBaseDomain: text("dns_base_domain"),
   region: text("region").notNull().default("fsn1"),
   createdAt: timestamp("created_at", { withTimezone: true })
     .notNull()

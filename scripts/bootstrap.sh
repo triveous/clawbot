@@ -63,28 +63,36 @@ openclaw ALL=(root) NOPASSWD: /usr/sbin/ufw status
 SUDOERS
 chmod 0440 /etc/sudoers.d/openclaw
 
-# --- 5. Install OpenClaw via official installer ---
+# --- 5. Install OpenClaw as the openclaw user ---
+# Running the installer as `openclaw` (not root) means the binary and node_modules
+# land in ~/.local/bin and ~/.local/lib — directories the user owns. Self-updates
+# and `openclaw doctor` will never hit permission errors because the process writing
+# to those dirs is the same user that owns them.
+#
 # OPENCLAW_VERSION is injected by the bootstrap workflow (e.g. "2026.4.1").
 # Falls back to "latest" if not set, but the workflow always sets it.
-echo ">>> Installing OpenClaw (version: ${OPENCLAW_VERSION:-latest})..."
-curl -fsSL --proto '=https' --tlsv1.2 https://openclaw.ai/install.sh | bash -s -- \
-  --version "${OPENCLAW_VERSION:-latest}" \
+echo ">>> Installing OpenClaw as openclaw user (version: ${OPENCLAW_VERSION:-latest})..."
+su - openclaw -c "curl -fsSL --proto '=https' --tlsv1.2 https://openclaw.ai/install.sh | bash -s -- \
+  --version '${OPENCLAW_VERSION:-latest}' \
   --no-onboard \
-  --no-prompt
+  --no-prompt"
 
-# Verify the binary is reachable and log the installed version
-OPENCLAW_BIN="$(which openclaw 2>/dev/null || true)"
+# Verify the user-install landed where expected
+OPENCLAW_BIN="/home/openclaw/.local/bin/openclaw"
+if [ ! -f "$OPENCLAW_BIN" ]; then
+  # Installer may have chosen a different path — fall back to PATH search as openclaw
+  OPENCLAW_BIN="$(su - openclaw -c 'which openclaw 2>/dev/null || true')"
+fi
 if [ -z "$OPENCLAW_BIN" ]; then
   echo "ERROR: openclaw binary not found after install"
   exit 1
 fi
-echo "OpenClaw installed at: $OPENCLAW_BIN ($(openclaw --version))"
+echo "OpenClaw installed at: $OPENCLAW_BIN ($(su - openclaw -c 'openclaw --version'))"
 
-# Ensure the binary is at /usr/bin/openclaw for the systemd service
-if [ "$OPENCLAW_BIN" != "/usr/bin/openclaw" ]; then
-  ln -sf "$OPENCLAW_BIN" /usr/bin/openclaw
-  echo "Symlinked $OPENCLAW_BIN -> /usr/bin/openclaw"
-fi
+# Symlink into /usr/local/bin so root and system PATH can resolve the binary
+# (used by cloud-init verification steps; the gateway itself always runs as openclaw)
+ln -sf "$OPENCLAW_BIN" /usr/local/bin/openclaw
+echo "Symlinked $OPENCLAW_BIN -> /usr/local/bin/openclaw"
 
 # --- 6. Prepare startup optimization dirs ---
 echo ">>> Preparing Node compile cache directory..."

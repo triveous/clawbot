@@ -3,8 +3,10 @@ import { eq } from "drizzle-orm";
 import { db } from "@/lib/db";
 import { assistants, assistantCredentials } from "@/lib/db/schema";
 import { getProvider, getHetznerProvider } from "@/lib/providers";
+import { createDnsRecord as cloudflareCreateDnsRecord } from "@/lib/providers/cloudflare";
 import { buildCloudInit } from "./cloud-init";
 import { generateEd25519KeyPair } from "./ssh-keys";
+import { extractSubdomain } from "./slug";
 
 function log(step: string, msg: string) {
   console.log(`[provisioning:${step}] ${new Date().toISOString()} — ${msg}`);
@@ -121,6 +123,55 @@ async function waitForReady(serverId: string) {
   );
 }
 
+async function createDnsRecord(assistantId: string, ip: string) {
+  "use step";
+
+  log("createDnsRecord", `Resolving DNS for assistant ${assistantId.slice(0, 8)}…`);
+
+  const assistant = await db.query.assistants.findFirst({
+    where: eq(assistants.id, assistantId),
+  });
+  if (!assistant) {
+    throw new Error(`Assistant ${assistantId} not found`);
+  }
+
+  // Idempotency: if a record already exists (workflow replay), skip.
+  if (assistant.dnsRecordId) {
+    log(
+      "createDnsRecord",
+      `Record already exists (${assistant.dnsRecordId}); skipping`,
+    );
+    return;
+  }
+
+  if (!assistant.hostname || !assistant.dnsBaseDomain) {
+    throw new Error(
+      `Assistant ${assistantId} is missing hostname/dnsBaseDomain — cannot create DNS record`,
+    );
+  }
+
+  const subdomain = extractSubdomain(
+    assistant.hostname,
+    assistant.dnsBaseDomain,
+  );
+  if (!subdomain) {
+    throw new Error(
+      `Stored hostname ${assistant.hostname} does not end with .${assistant.dnsBaseDomain}`,
+    );
+  }
+
+  const { recordId, zoneId, fqdn } = await cloudflareCreateDnsRecord({
+    name: subdomain,
+    ipv4: ip,
+  });
+  log("createDnsRecord", `Record created: ${fqdn} → ${ip} (id=${recordId})`);
+
+  await db
+    .update(assistants)
+    .set({ dnsRecordId: recordId, dnsZoneId: zoneId })
+    .where(eq(assistants.id, assistantId));
+}
+
 async function finalize(
   assistantId: string,
   ip: string,
@@ -164,10 +215,11 @@ export async function provisionAssistant(
   assistantId: string,
   snapshotId: string,
   region: string,
+  hostname: string,
 ) {
   "use workflow";
 
-  log("workflow", `Starting provisionAssistant assistantId=${assistantId} snapshotId=${snapshotId} region=${region}`);
+  log("workflow", `Starting provisionAssistant assistantId=${assistantId} snapshotId=${snapshotId} region=${region} hostname=${hostname}`);
 
   try {
     const credentials = await prepareCredentials();
@@ -182,6 +234,8 @@ export async function provisionAssistant(
     );
 
     await waitForReady(server.serverId);
+
+    await createDnsRecord(assistantId, server.ip);
 
     await finalize(
       assistantId,
