@@ -101,10 +101,19 @@ DOCKER_HOST=unix:///run/user/1000/docker.sock
 ENVD
 chown openclaw:openclaw /home/openclaw/.config/environment.d/docker-rootless.conf
 
-# --- 7. Install OpenClaw as the openclaw user ---
+# --- 7. Configure npm prefix for openclaw user ---
+# Point the openclaw user's global npm install location at their own home so
+# any `npm install -g` (including OpenClaw self-updates) never touches the
+# root-owned /usr/lib/node_modules. Ubuntu's default ~/.profile auto-adds
+# ~/.local/bin to PATH when the directory exists at login.
+echo ">>> Configuring npm prefix for openclaw user..."
+su - openclaw -c "mkdir -p ~/.local/bin ~/.local/lib && npm config set prefix ~/.local"
+
+# --- 8. Install OpenClaw as the openclaw user ---
 # Node.js is already in PATH (installed system-wide above), so the OpenClaw
-# installer skips its own Node setup and installs the npm package directly
-# into ~/.local — no sudo, no TTY, no permission issues later.
+# installer skips its own Node setup. npm prefix is ~/.local (set above), so
+# the package lands in ~/.local/lib/node_modules/openclaw and the binary at
+# ~/.local/bin/openclaw — both user-owned. Self-updates work without sudo.
 #
 # OPENCLAW_VERSION is injected by the bootstrap workflow (e.g. "2026.4.1").
 # Falls back to "latest" if not set.
@@ -129,12 +138,12 @@ echo "OpenClaw installed at: $OPENCLAW_BIN ($(su - openclaw -c 'openclaw --versi
 ln -sf "$OPENCLAW_BIN" /usr/local/bin/openclaw
 echo "Symlinked $OPENCLAW_BIN -> /usr/local/bin/openclaw"
 
-# --- 8. Prepare shared compile cache directory ---
+# --- 9. Prepare shared compile cache directory ---
 echo ">>> Preparing Node compile cache directory..."
 mkdir -p /var/tmp/openclaw-compile-cache
 chown openclaw:openclaw /var/tmp/openclaw-compile-cache
 
-# --- 9. Install and configure UFW ---
+# --- 10. Install and configure UFW ---
 echo ">>> Configuring UFW firewall..."
 apt-get install -y ufw
 ufw default deny incoming
@@ -145,7 +154,7 @@ ufw --force enable
 echo "UFW status:"
 ufw status verbose
 
-# --- 10. Install and configure fail2ban ---
+# --- 11. Install and configure fail2ban ---
 echo ">>> Installing fail2ban..."
 apt-get install -y fail2ban
 
@@ -163,7 +172,7 @@ JAIL
 systemctl enable fail2ban
 systemctl restart fail2ban
 
-# --- 11. Configure unattended-upgrades (security patches only) ---
+# --- 12. Configure unattended-upgrades (security patches only) ---
 echo ">>> Configuring unattended-upgrades..."
 apt-get install -y unattended-upgrades
 
@@ -179,7 +188,7 @@ APT::Periodic::Update-Package-Lists "1";
 APT::Periodic::Unattended-Upgrade "1";
 AUTO
 
-# --- 12. Clean up for snapshot ---
+# --- 13. Clean up for snapshot ---
 echo ">>> Cleaning up for snapshot..."
 # Remove root SSH keys so they never end up in servers booted from this snapshot
 rm -f /root/.ssh/authorized_keys /root/.ssh/known_hosts
