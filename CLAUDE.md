@@ -156,7 +156,7 @@ All tests must pass before a commit lands.
 | Phase             | Status      | Owner                                                |
 | ----------------- | ----------- | ---------------------------------------------------- |
 | 1 — Foundation    | Complete    | All routes, schema, auth, RPC, tests                 |
-| 2 — Provisioning  | Not started | Hetzner VPS, snapshot-based, useworkflow.dev         |
+| 2 — Provisioning  | Complete    | Hetzner VPS, snapshot-based, useworkflow.dev         |
 | 3 — Channel Setup | Not started | SSH config push, health monitoring                   |
 | 4 — Billing       | Not started | Stripe per-assistant subscriptions, OpenRouter usage |
 | 5 — Marketing     | Not started | Landing page, pricing, onboarding wizard             |

@@ -86,8 +86,15 @@ if [ "$OPENCLAW_BIN" != "/usr/bin/openclaw" ]; then
   echo "Symlinked $OPENCLAW_BIN -> /usr/bin/openclaw"
 fi
 
-# --- 6. Install and configure UFW ---
+# --- 6. Prepare startup optimization dirs ---
+echo ">>> Preparing Node compile cache directory..."
+mkdir -p /var/tmp/openclaw-compile-cache
+# Ownership set to openclaw so the gateway service can write to it
+chown openclaw:openclaw /var/tmp/openclaw-compile-cache
+
+# --- 7. Install and configure UFW ---
 echo ">>> Configuring UFW firewall..."
+
 apt-get install -y ufw
 ufw default deny incoming
 ufw default allow outgoing
@@ -98,7 +105,7 @@ ufw --force enable
 echo "UFW status:"
 ufw status verbose
 
-# --- 7. Install and configure fail2ban ---
+# --- 8. Install and configure fail2ban ---
 echo ">>> Installing fail2ban..."
 apt-get install -y fail2ban
 
@@ -116,7 +123,7 @@ JAIL
 systemctl enable fail2ban
 systemctl restart fail2ban
 
-# --- 8. Configure unattended-upgrades ---
+# --- 9. Configure unattended-upgrades ---
 echo ">>> Configuring unattended-upgrades..."
 apt-get install -y unattended-upgrades
 
@@ -132,7 +139,7 @@ APT::Periodic::Update-Package-Lists "1";
 APT::Periodic::Unattended-Upgrade "1";
 AUTO
 
-# --- 9. Clean up for snapshot ---
+# --- 10. Clean up for snapshot ---
 echo ">>> Cleaning up for snapshot..."
 # Remove root SSH keys so they never end up in servers booted from this snapshot
 rm -f /root/.ssh/authorized_keys /root/.ssh/known_hosts
