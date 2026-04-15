@@ -8,6 +8,12 @@
  *
  * Principle: root does the absolute minimum — essentially just the `su -`
  * hand-off. All file writes and service starts happen as the openclaw user.
+ * No root SSH key is injected; emergency access goes through Hetzner's
+ * out-of-band noVNC console.
+ *
+ * We drive `openclaw gateway install` with `--port` and `--token` flags
+ * rather than hand-writing `openclaw.json`. The CLI owns its own schema;
+ * writing a JSON file whose shape we guessed at broke `openclaw doctor`.
  *
  * Note: sshd hardening lives in the snapshot (sshd_config.d/99-openclaw.conf);
  * no ssh config edits during provisioning.
@@ -31,34 +37,21 @@ ${publicKey}
 SSHKEY
 chmod 600 ~/.ssh/authorized_keys
 
-# --- 2. Write per-server gateway config ---
+# --- 2. Save gateway token for operator retrieval ---
 mkdir -p ~/.openclaw
-cat > ~/.openclaw/openclaw.json <<'CONF'
-{
-  "gateway": {
-    "mode": "local",
-    "auth": {
-      "token": "${gatewayToken}"
-    },
-    "port": 18789
-  },
-  "session": {
-    "dmScope": "per-channel-peer"
-  },
-  "skills": {
-    "allowBundled": []
-  }
-}
-CONF
-chmod 600 ~/.openclaw/openclaw.json
-
-# --- 3. Save gateway token for easy retrieval ---
 echo "${gatewayToken}" > ~/.openclaw/.gateway-token
 chmod 600 ~/.openclaw/.gateway-token
 
-# --- 4. Start the gateway ---
-# openclaw is at ~/.local/bin/openclaw (baked into snapshot). su - loads the
-# login environment so ~/.local/bin is in PATH automatically.
+# --- 3. Persist gateway config via the CLI (correct schema, version-stable) ---
+# 'gateway install' only installs the systemd unit — it does NOT persist the
+# token to the config file. We use 'config set' so the token survives restarts
+# and matches the schema OpenClaw's own setup wizard produces.
+openclaw config set gateway.mode local
+openclaw config set gateway.auth.mode token
+openclaw config set gateway.auth.token "${gatewayToken}"
+openclaw config set gateway.port 18789 --strict-json
+
+# --- 4. Install the gateway service ---
 openclaw gateway install
 OPENCLAW_SHELL
 `;

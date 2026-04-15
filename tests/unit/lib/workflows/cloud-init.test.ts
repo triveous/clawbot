@@ -20,6 +20,11 @@ describe("buildCloudInit", () => {
     expect(script).toContain("OPENCLAW_SHELL");
   });
 
+  it("does not inject an SSH key for root (emergencies go through Hetzner console)", () => {
+    const script = buildCloudInit(publicKey, gatewayToken);
+    expect(script).not.toContain("/root/.ssh");
+  });
+
   it("includes the SSH public key in authorized_keys", () => {
     const script = buildCloudInit(publicKey, gatewayToken);
     expect(script).toContain(publicKey);
@@ -32,46 +37,36 @@ describe("buildCloudInit", () => {
     expect(script).toContain("chmod 600 ~/.ssh/authorized_keys");
   });
 
-  it("writes gateway token to openclaw.json", () => {
-    const script = buildCloudInit(publicKey, gatewayToken);
-    expect(script).toContain(`"token": "${gatewayToken}"`);
-    expect(script).toContain("~/.openclaw/openclaw.json");
-  });
-
-  it("sets gateway mode to local", () => {
-    const script = buildCloudInit(publicKey, gatewayToken);
-    expect(script).toContain('"mode": "local"');
-  });
-
-  it("saves gateway token to .gateway-token file", () => {
+  it("saves gateway token to .gateway-token for operator retrieval", () => {
     const script = buildCloudInit(publicKey, gatewayToken);
     expect(script).toContain("~/.openclaw/.gateway-token");
-  });
-
-  it("sets correct permissions on openclaw config", () => {
-    const script = buildCloudInit(publicKey, gatewayToken);
-    expect(script).toContain("chmod 600 ~/.openclaw/openclaw.json");
+    expect(script).toContain(gatewayToken);
     expect(script).toContain("chmod 600 ~/.openclaw/.gateway-token");
   });
 
-  it("starts the gateway via openclaw gateway install", () => {
+  it("persists gateway config via `openclaw config set` (not by hand-writing JSON)", () => {
     const script = buildCloudInit(publicKey, gatewayToken);
+    // The CLI owns its own schema — driving config via `config set` avoids
+    // schema drift that previously broke `openclaw doctor`. `gateway install`
+    // alone does NOT persist the token, so we must `config set` it first.
+    expect(script).toContain("openclaw config set gateway.mode local");
+    expect(script).toContain("openclaw config set gateway.auth.mode token");
+    expect(script).toContain(
+      `openclaw config set gateway.auth.token "${gatewayToken}"`,
+    );
+    expect(script).toContain(
+      "openclaw config set gateway.port 18789 --strict-json",
+    );
     expect(script).toContain("openclaw gateway install");
+    expect(script).not.toContain("openclaw.json");
   });
 
-  it("configures gateway on port 18789", () => {
+  it("does not hand-write gateway / session / skills config keys", () => {
     const script = buildCloudInit(publicKey, gatewayToken);
-    expect(script).toContain('"port": 18789');
-  });
-
-  it("sets session dmScope to per-channel-peer", () => {
-    const script = buildCloudInit(publicKey, gatewayToken);
-    expect(script).toContain('"dmScope": "per-channel-peer"');
-  });
-
-  it("suppresses default bundled skills", () => {
-    const script = buildCloudInit(publicKey, gatewayToken);
-    expect(script).toContain('"allowBundled": []');
+    // These keys were guessed at and broke doctor; let the CLI manage them.
+    expect(script).not.toContain("dmScope");
+    expect(script).not.toContain("allowBundled");
+    expect(script).not.toMatch(/"mode":\s*"local"/);
   });
 
   it("does not create a custom system service", () => {
