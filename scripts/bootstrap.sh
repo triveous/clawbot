@@ -125,7 +125,11 @@ APT::Periodic::Unattended-Upgrade "1";
 AUTO
 
 # --- Enable lingering so openclaw's systemd user services survive logout ---
+# enable-linger kicks off user@1000.service async; wait for it to be active so
+# the subsequent `su -` hand-off can reach systemctl --user.
 loginctl enable-linger openclaw
+systemctl start user@1000.service
+until systemctl is-active --quiet user@1000.service; do sleep 0.2; done
 
 # --- Shared compile cache dir (owned by openclaw) ---
 mkdir -p /var/tmp/openclaw-compile-cache
@@ -147,15 +151,45 @@ echo ">>> [openclaw] Configuring npm prefix to ~/.local..."
 mkdir -p ~/.local/bin ~/.local/lib
 npm config set prefix ~/.local
 
+# Make ~/.local/bin visible in PATH for:
+#   (a) the rest of THIS script (installer checks PATH post-install)
+#   (b) future interactive shells (bashrc sources it; profile already handles it
+#       once the directory exists at login)
+#   (c) systemd user services (via ~/.config/environment.d/path.conf below)
+export PATH="$HOME/.local/bin:$PATH"
+if ! grep -q 'HOME/.local/bin' ~/.bashrc 2>/dev/null; then
+  echo 'export PATH="$HOME/.local/bin:$PATH"' >> ~/.bashrc
+fi
+
 echo ">>> [openclaw] Installing Docker rootless..."
-# Docker CE ships the rootless setup tool; invoke it for our user.
+# Point at the already-running user systemd instance (lingered in Phase A).
+# `su -` doesn't wire these up automatically, and without them the setuptool
+# falls back to non-systemd mode and prints:
+#   "WARNING: systemd not found. You have to remove XDG_RUNTIME_DIR manually..."
+# which means docker.service is NOT installed as a user unit and rootless
+# Docker won't auto-start on boot.
+export XDG_RUNTIME_DIR="/run/user/$(id -u)"
+export DBUS_SESSION_BUS_ADDRESS="unix:path=${XDG_RUNTIME_DIR}/bus"
 dockerd-rootless-setuptool.sh install --skip-iptables
 
-echo ">>> [openclaw] Installing OpenClaw (${OPENCLAW_VERSION})..."
-curl -fsSL --proto '=https' --tlsv1.2 https://openclaw.ai/install.sh | bash -s -- \
-  --version "${OPENCLAW_VERSION}" \
-  --no-onboard \
-  --no-prompt
+echo ">>> [openclaw] Installing OpenClaw (${OPENCLAW_VERSION}) via npm directly..."
+# We skip openclaw.ai/install.sh — it just wraps `npm install -g openclaw` with
+# Node.js detection, prefix setup, and onboarding flags, all of which we've
+# already handled (Node is pre-installed system-wide, prefix is ~/.local, no
+# onboarding wanted). Going direct is fewer moving parts and easier to debug.
+#
+# Clear npm cache first: a prior 0-byte EINTEGRITY response (transient
+# registry hiccup) can poison the cache and make every retry fail the same
+# way. Cleaning before install avoids that class of failure entirely.
+npm cache clean --force
+npm install -g "openclaw@${OPENCLAW_VERSION}"
+
+# Self-heal: `openclaw doctor --fix --yes` repairs anything the install left
+# in a bad state (corrupted node_modules, missing config, etc.) without
+# bumping the pinned version. Run after install — doctor needs openclaw on
+# disk to inspect it.
+echo ">>> [openclaw] Running openclaw doctor --fix --yes..."
+openclaw doctor --fix --yes
 
 # Writing runtime env vars via systemd user environment.d — picked up by
 # any user systemd service (gateway, docker rootless, etc.)
@@ -168,11 +202,31 @@ ENVD
 cat > ~/.config/environment.d/docker-rootless.conf <<'ENVD'
 DOCKER_HOST=unix:///run/user/1000/docker.sock
 ENVD
+cat > ~/.config/environment.d/path.conf <<'ENVD'
+PATH=/home/openclaw/.local/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
+ENVD
 
 # Verify the binary exists and reports a version — fail loudly otherwise.
 echo ">>> [openclaw] Verifying install..."
 if ! ~/.local/bin/openclaw --version >/dev/null 2>&1; then
   echo "ERROR: openclaw binary missing or non-functional — do NOT snapshot."
+  exit 1
+fi
+
+# Verify the dependency tree is intact. `--version` doesn't load axios so
+# can't catch the EINTEGRITY corruption above; `doctor` exercises real
+# imports and exits non-zero on broken package configs.
+echo ">>> [openclaw] Running doctor as smoke test..."
+if ! openclaw doctor < /dev/null; then
+  echo "ERROR: openclaw doctor failed — do NOT snapshot."
+  exit 1
+fi
+
+# Verify rootless docker.service was installed as a systemd user unit.
+# If the setuptool fell back to non-systemd mode, Docker won't auto-start on
+# boot and the snapshot is unusable for containerized skills.
+if ! systemctl --user is-enabled docker.service >/dev/null 2>&1; then
+  echo "ERROR: rootless docker.service not installed as user unit — do NOT snapshot."
   exit 1
 fi
 
