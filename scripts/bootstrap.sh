@@ -37,7 +37,7 @@ apt-get install -y \
   curl wget git ca-certificates gnupg lsb-release \
   software-properties-common openssl jq \
   uidmap dbus-user-session \
-  fail2ban ufw unattended-upgrades
+  fail2ban unattended-upgrades
 
 # --- Node.js (system-wide binary; openclaw will own its own npm prefix) ---
 echo ">>> [root] Installing Node.js ${NODE_MAJOR}..."
@@ -92,12 +92,26 @@ Match User openclaw
 SSHCONF
 chmod 0644 /etc/ssh/sshd_config.d/99-openclaw.conf
 
-# --- UFW: only SSH. Gateway binds to 127.0.0.1 so no port 18789 exposure needed ---
-echo ">>> [root] Configuring UFW (SSH only; gateway is localhost-bound)..."
-ufw default deny incoming
-ufw default allow outgoing
-ufw allow 22/tcp
-ufw --force enable
+# --- Tailscale (pre-installed for all modes; cloud-init enables+starts it per-mode) ---
+echo ">>> [root] Installing Tailscale..."
+curl -fsSL https://tailscale.com/install.sh | sh
+# Don't autostart — cloud-init enables it only for tailscale_serve / tailscale_direct modes.
+# In ssh mode the daemon is never started, saving memory and avoiding a spurious device
+# registration. On reboot after cloud-init, enabled units start automatically via stored
+# device cert in /var/lib/tailscale/ (auth key is one-time-use; cert is not).
+systemctl disable tailscaled
+
+# Grant the openclaw user operator rights so it can run `tailscale serve` and other
+# tailscale CLI commands without sudo. Start tailscaled briefly to apply the setting
+# (the operator config is persisted in /var/lib/tailscale/tailscaled.state).
+systemctl start tailscaled
+tailscale set --operator=openclaw
+systemctl stop tailscaled
+
+# Note: UFW is intentionally NOT configured here. All inbound access control lives in the
+# Hetzner cloud firewall (one resource per assistant), managed via API. UFW in the snapshot
+# would risk permanent lockout: a Tailscale-mode assistant with port 22 blocked at the OS
+# layer cannot be recovered via SSH, and there is no platform API that can reopen it.
 
 # --- fail2ban ---
 echo ">>> [root] Configuring fail2ban..."
@@ -186,6 +200,14 @@ echo ">>> [openclaw] Installing OpenClaw (${OPENCLAW_VERSION}) via npm directly.
 # way. Cleaning before install avoids that class of failure entirely.
 npm cache clean --force
 npm install -g "openclaw@${OPENCLAW_VERSION}"
+
+# Seed a valid empty config before running doctor — openclaw loads the config
+# at startup, so if the file is missing or zero-byte, doctor itself fails.
+# Without this, doctor creates a zero-byte openclaw.json which gets baked into
+# the snapshot and breaks cloud-init on every provisioned server.
+mkdir -p ~/.openclaw
+echo '{}' > ~/.openclaw/openclaw.json
+chmod 600 ~/.openclaw/openclaw.json
 
 # Self-heal: `openclaw doctor --fix --yes` repairs anything the install left
 # in a bad state (corrupted node_modules, missing config, etc.) without

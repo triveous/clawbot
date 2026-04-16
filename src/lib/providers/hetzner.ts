@@ -1,6 +1,7 @@
 import type {
   CreateServerOptions,
   CreateServerResult,
+  FirewallRule,
   ProviderInterface,
   ProviderServer,
 } from "./types";
@@ -34,6 +35,13 @@ interface HetznerActionResponse {
 
 interface HetznerSshKeyResponse {
   ssh_key: {
+    id: number;
+    name: string;
+  };
+}
+
+interface HetznerFirewallResponse {
+  firewall: {
     id: number;
     name: string;
   };
@@ -101,6 +109,10 @@ export class HetznerProvider implements ProviderInterface {
 
     if (opts.sshKeys && opts.sshKeys.length > 0) {
       body.ssh_keys = opts.sshKeys.map(Number);
+    }
+
+    if (opts.firewalls && opts.firewalls.length > 0) {
+      body.firewalls = opts.firewalls.map((id) => ({ firewall: Number(id) }));
     }
 
     const data = await this.request<HetznerServerResponse>("/servers", {
@@ -194,5 +206,48 @@ export class HetznerProvider implements ProviderInterface {
 
   async deleteImage(imageId: string): Promise<void> {
     await this.request(`/images/${imageId}`, { method: "DELETE" });
+  }
+
+  async createFirewall(
+    name: string,
+    rules: FirewallRule[],
+  ): Promise<{ firewallId: string }> {
+    const data = await this.request<HetznerFirewallResponse>("/firewalls", {
+      method: "POST",
+      body: JSON.stringify({ name, rules }),
+    });
+    return { firewallId: String(data.firewall.id) };
+  }
+
+  async attachFirewall(firewallId: string, serverId: string): Promise<void> {
+    await this.request(`/firewalls/${firewallId}/actions/apply_to_resources`, {
+      method: "POST",
+      body: JSON.stringify({
+        apply_to: [{ type: "server", server: { id: Number(serverId) } }],
+      }),
+    });
+  }
+
+  async detachFirewall(firewallId: string, serverId: string): Promise<void> {
+    try {
+      await this.request(`/firewalls/${firewallId}/actions/remove_from_resources`, {
+        method: "POST",
+        body: JSON.stringify({
+          remove_from: [{ type: "server", server: { id: Number(serverId) } }],
+        }),
+      });
+    } catch (err) {
+      if (err instanceof ProviderError && err.statusCode === 404) return;
+      throw err;
+    }
+  }
+
+  async deleteFirewall(firewallId: string): Promise<void> {
+    try {
+      await this.request(`/firewalls/${firewallId}`, { method: "DELETE" });
+    } catch (err) {
+      if (err instanceof ProviderError && err.statusCode === 404) return;
+      throw err;
+    }
   }
 }

@@ -13,6 +13,7 @@ import {
 } from "@/lib/providers/cloudflare";
 import { provisionAssistant } from "@/lib/workflows/provisioning";
 import { generateHostnameSlug, buildFqdn } from "@/lib/workflows/slug";
+import { getHetznerProvider } from "@/lib/providers";
 import type { AssistantResponse } from "@/types/assistant";
 
 const VALID_REGIONS = ["fsn1", "nbg1", "hel1"] as const;
@@ -27,6 +28,8 @@ function toAssistantResponse(assistant: Assistant): AssistantResponse {
     ipv4: assistant.ipv4,
     hostname: assistant.hostname,
     region: assistant.region,
+    accessMode: assistant.accessMode,
+    gatewayPort: assistant.gatewayPort,
     createdAt: assistant.createdAt.toISOString(),
   };
 }
@@ -58,7 +61,13 @@ export const assistantsRoute = new Hono()
   // Create assistant
   .post("/", async (c) => {
     const dbUser = c.get("dbUser");
-    const body = await c.req.json<{ name?: string; region?: string }>();
+    const body = await c.req.json<{
+      name?: string;
+      region?: string;
+      accessMode?: string;
+      sshAllowedIps?: string;
+      tailscaleAuthKey?: string;
+    }>();
 
     if (!body.name || body.name.trim().length === 0) {
       throw new HTTPException(400, { message: "Assistant name is required" });
@@ -73,6 +82,24 @@ export const assistantsRoute = new Hono()
     if (!VALID_REGIONS.includes(region as (typeof VALID_REGIONS)[number])) {
       throw new HTTPException(400, {
         message: `Invalid region. Must be one of: ${VALID_REGIONS.join(", ")}`,
+      });
+    }
+
+    const VALID_ACCESS_MODES = ["ssh", "tailscale_serve"] as const;
+    type ValidAccessMode = (typeof VALID_ACCESS_MODES)[number];
+    const accessMode: ValidAccessMode = (body.accessMode as ValidAccessMode) ?? "ssh";
+    if (!VALID_ACCESS_MODES.includes(accessMode)) {
+      throw new HTTPException(400, {
+        message: `Invalid accessMode. Must be one of: ${VALID_ACCESS_MODES.join(", ")}`,
+      });
+    }
+
+    if (
+      accessMode === "tailscale_serve" &&
+      !body.tailscaleAuthKey
+    ) {
+      throw new HTTPException(422, {
+        message: "tailscaleAuthKey is required for Tailscale access modes",
       });
     }
 
@@ -110,6 +137,8 @@ export const assistantsRoute = new Hono()
         status: "creating",
         provider: "hetzner",
         region,
+        accessMode,
+        sshAllowedIps: body.sshAllowedIps ?? null,
       })
       .returning();
 
@@ -127,6 +156,9 @@ export const assistantsRoute = new Hono()
       activeSnapshot.providerSnapshotId,
       region,
       hostname,
+      accessMode,
+      body.sshAllowedIps ?? "0.0.0.0/0",
+      body.tailscaleAuthKey,
     ]);
 
     return c.json(toAssistantResponse(assistant), 201);
@@ -226,12 +258,30 @@ export const assistantsRoute = new Hono()
       }
     }
 
+    if (assistant.firewallId && assistant.providerServerId) {
+      try {
+        const hetzner = getHetznerProvider();
+        await hetzner.detachFirewall(assistant.firewallId, assistant.providerServerId);
+      } catch {
+        // Best-effort — server may already be gone
+      }
+    }
+
     if (assistant.providerServerId) {
       try {
         const provider = getProvider(assistant.provider);
         await provider.deleteServer(assistant.providerServerId);
       } catch {
         // Server may already be deleted — that's fine
+      }
+    }
+
+    if (assistant.firewallId) {
+      try {
+        const hetzner = getHetznerProvider();
+        await hetzner.deleteFirewall(assistant.firewallId);
+      } catch {
+        // Best-effort; firewall can be cleaned up manually
       }
     }
 

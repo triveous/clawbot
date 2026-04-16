@@ -4,7 +4,9 @@ import { db } from "@/lib/db";
 import { assistants, assistantCredentials } from "@/lib/db/schema";
 import { getProvider, getHetznerProvider } from "@/lib/providers";
 import { createDnsRecord as cloudflareCreateDnsRecord } from "@/lib/providers/cloudflare";
+import type { FirewallRule } from "@/lib/providers/types";
 import { buildCloudInit } from "./cloud-init";
+import type { AccessMode } from "./cloud-init";
 import { generateEd25519KeyPair } from "./ssh-keys";
 import { extractSubdomain } from "./slug";
 
@@ -12,29 +14,75 @@ function log(step: string, msg: string) {
   console.log(`[provisioning:${step}] ${new Date().toISOString()} — ${msg}`);
 }
 
+function randomGatewayPort(): number {
+  // Range 20000–29999 — avoids well-known ports and the hardcoded legacy 18789.
+  return 20000 + Math.floor(Math.random() * 10000);
+}
+
 async function prepareCredentials() {
   "use step";
 
-  log("prepareCredentials", "Generating SSH keypairs and gateway token…");
+  log("prepareCredentials", "Generating root SSH keypair and gateway token…");
 
-  // Root SSH keypair — for emergency root access to the agent server.
+  // Root SSH keypair — registered with Hetzner; injected into /root/.ssh/authorized_keys.
+  // Openclaw user has no SSH key — root switches via `su - openclaw`.
   const { opensshPrivate: rootPrivateKey, opensshPublic: rootPublicKey } =
     generateEd25519KeyPair("root@snapclaw");
 
-  // Openclaw user keypair — injected via cloud-init for Gateway SSH tunnel.
-  const { opensshPrivate: sshPrivateKey, opensshPublic: sshPublicKey } =
-    generateEd25519KeyPair("openclaw@snapclaw");
-
   const gatewayToken = crypto.randomBytes(32).toString("hex");
+  const gatewayPort = randomGatewayPort();
 
-  log("prepareCredentials", "Credentials generated");
+  log("prepareCredentials", `Credentials generated (gatewayPort=${gatewayPort})`);
   return {
     rootPrivateKey,
     rootPublicKey,
-    sshPrivateKey,
-    sshPublicKey,
     gatewayToken,
+    gatewayPort,
   };
+}
+
+async function createFirewall(
+  assistantId: string,
+  accessMode: AccessMode,
+  sshAllowedIps: string[],
+): Promise<{ firewallId: string }> {
+  "use step";
+
+  const hetzner = getHetznerProvider();
+
+  let rules: FirewallRule[];
+  if (accessMode === "ssh") {
+    rules = [
+      {
+        direction: "in",
+        protocol: "tcp",
+        port: "22",
+        source_ips: sshAllowedIps,
+      },
+    ];
+  } else {
+    // tailscale_serve: allow WireGuard only, block SSH entirely.
+    rules = [
+      {
+        direction: "in",
+        protocol: "udp",
+        port: "41641",
+        source_ips: ["0.0.0.0/0", "::/0"],
+      },
+    ];
+  }
+
+  const name = `openclaw-${assistantId.slice(0, 8)}`;
+  log("createFirewall", `Creating firewall "${name}" for accessMode=${accessMode}…`);
+  const { firewallId } = await hetzner.createFirewall(name, rules);
+  log("createFirewall", `Firewall created: id=${firewallId}`);
+
+  await db
+    .update(assistants)
+    .set({ firewallId })
+    .where(eq(assistants.id, assistantId));
+
+  return { firewallId };
 }
 
 async function createServer(
@@ -42,22 +90,32 @@ async function createServer(
   snapshotId: string,
   region: string,
   rootPublicKey: string,
-  sshPublicKey: string,
   gatewayToken: string,
+  gatewayPort: number,
+  accessMode: AccessMode,
+  firewallId: string,
+  tailscaleAuthKey: string | undefined,
+  assistantSlug: string,
 ) {
   "use step";
 
   const hetzner = getHetznerProvider();
 
   log("createServer", `Registering root SSH key for assistant ${assistantId.slice(0, 8)}…`);
-  // Register the root SSH key with Hetzner so it can inject it into authorized_keys.
   const { keyId: hetznerKeyId } = await hetzner.createSshKey(
     `openclaw-root-${assistantId.slice(0, 8)}`,
     rootPublicKey,
   );
   log("createServer", `SSH key registered: keyId=${hetznerKeyId}`);
 
-  const cloudInit = buildCloudInit(sshPublicKey, gatewayToken);
+  const cloudInit = buildCloudInit(
+    rootPublicKey,
+    gatewayToken,
+    gatewayPort,
+    accessMode,
+    tailscaleAuthKey,
+    assistantSlug,
+  );
 
   log("createServer", `Creating server from snapshot ${snapshotId} in ${region}…`);
   let serverId: string;
@@ -70,17 +128,17 @@ async function createServer(
       serverType: "cx33",
       userData: cloudInit,
       sshKeys: [hetznerKeyId],
+      firewalls: [firewallId],
     });
     serverId = result.server.id;
     ip = result.server.ip;
     log("createServer", `Server created: id=${serverId} ip=${ip}`);
   } finally {
-    // Key is already injected — delete the Hetzner key resource immediately.
     try {
       await hetzner.deleteSshKey(hetznerKeyId);
       log("createServer", "Root SSH key resource deleted");
     } catch {
-      // Non-fatal: key can be cleaned up manually if this fails
+      // Non-fatal
     }
   }
 
@@ -109,7 +167,6 @@ async function waitForReady(serverId: string) {
     const server = await provider.getServer(serverId);
     log("waitForReady", `Attempt ${i + 1}/${maxAttempts}: status=${server.status}`);
     if (server.status === "running") {
-      // Wait additional time for cloud-init to complete
       log("waitForReady", "Server running — waiting 45s for cloud-init…");
       await new Promise((r) => setTimeout(r, 45_000));
       log("waitForReady", "Cloud-init wait complete");
@@ -135,12 +192,8 @@ async function createDnsRecord(assistantId: string, ip: string) {
     throw new Error(`Assistant ${assistantId} not found`);
   }
 
-  // Idempotency: if a record already exists (workflow replay), skip.
   if (assistant.dnsRecordId) {
-    log(
-      "createDnsRecord",
-      `Record already exists (${assistant.dnsRecordId}); skipping`,
-    );
+    log("createDnsRecord", `Record already exists (${assistant.dnsRecordId}); skipping`);
     return;
   }
 
@@ -150,10 +203,7 @@ async function createDnsRecord(assistantId: string, ip: string) {
     );
   }
 
-  const subdomain = extractSubdomain(
-    assistant.hostname,
-    assistant.dnsBaseDomain,
-  );
+  const subdomain = extractSubdomain(assistant.hostname, assistant.dnsBaseDomain);
   if (!subdomain) {
     throw new Error(
       `Stored hostname ${assistant.hostname} does not end with .${assistant.dnsBaseDomain}`,
@@ -176,9 +226,9 @@ async function finalize(
   assistantId: string,
   ip: string,
   rootPrivateKey: string,
-  sshPrivateKey: string,
-  sshPublicKey: string,
   gatewayToken: string,
+  gatewayPort: number,
+  tailscaleAuthKey: string | undefined,
 ) {
   "use step";
 
@@ -187,15 +237,14 @@ async function finalize(
     assistantId,
     rootCredentialType: "ssh",
     rootCredential: rootPrivateKey,
-    sshPrivateKey,
-    sshPublicKey,
     gatewayToken,
-    gatewayPort: 18789,
+    gatewayPort,
+    tailscaleAuthKey: tailscaleAuthKey ?? null,
   });
 
   await db
     .update(assistants)
-    .set({ status: "running", ipv4: ip })
+    .set({ status: "running", ipv4: ip, gatewayPort })
     .where(eq(assistants.id, assistantId));
 
   log("finalize", `Assistant is running at ${ip}`);
@@ -211,26 +260,65 @@ async function markError(assistantId: string) {
     .where(eq(assistants.id, assistantId));
 }
 
+async function cleanupFirewall(assistantId: string) {
+  "use step";
+
+  const assistant = await db.query.assistants.findFirst({
+    where: eq(assistants.id, assistantId),
+  });
+  if (!assistant?.firewallId) return;
+
+  log("cleanupFirewall", `Best-effort delete of firewall ${assistant.firewallId}`);
+  const hetzner = getHetznerProvider();
+  await hetzner.deleteFirewall(assistant.firewallId).catch((err) => {
+    log("cleanupFirewall", `Firewall delete failed: ${String(err)}`);
+  });
+}
+
 export async function provisionAssistant(
   assistantId: string,
   snapshotId: string,
   region: string,
   hostname: string,
+  accessMode: AccessMode = "ssh",
+  sshAllowedIps: string = "0.0.0.0/0",
+  tailscaleAuthKey?: string,
 ) {
   "use workflow";
 
-  log("workflow", `Starting provisionAssistant assistantId=${assistantId} snapshotId=${snapshotId} region=${region} hostname=${hostname}`);
+  log(
+    "workflow",
+    `Starting provisionAssistant assistantId=${assistantId} snapshotId=${snapshotId} region=${region} hostname=${hostname} accessMode=${accessMode}`,
+  );
+
+  const resolvedSshAllowedIps =
+    sshAllowedIps === "0.0.0.0/0"
+      ? ["0.0.0.0/0", "::/0"]
+      : sshAllowedIps.split(",").map((s) => s.trim());
+
+  // Extract slug from hostname (everything before the first dot)
+  const assistantSlug = hostname.split(".")[0];
 
   try {
     const credentials = await prepareCredentials();
+
+    const { firewallId } = await createFirewall(
+      assistantId,
+      accessMode,
+      resolvedSshAllowedIps,
+    );
 
     const server = await createServer(
       assistantId,
       snapshotId,
       region,
       credentials.rootPublicKey,
-      credentials.sshPublicKey,
       credentials.gatewayToken,
+      credentials.gatewayPort,
+      accessMode,
+      firewallId,
+      tailscaleAuthKey,
+      assistantSlug,
     );
 
     await waitForReady(server.serverId);
@@ -241,9 +329,9 @@ export async function provisionAssistant(
       assistantId,
       server.ip,
       credentials.rootPrivateKey,
-      credentials.sshPrivateKey,
-      credentials.sshPublicKey,
       credentials.gatewayToken,
+      credentials.gatewayPort,
+      tailscaleAuthKey,
     );
 
     log("workflow", `provisionAssistant complete — serverId=${server.serverId} ip=${server.ip}`);
@@ -251,6 +339,7 @@ export async function provisionAssistant(
   } catch (error) {
     log("workflow", `provisionAssistant FAILED: ${String(error)}`);
     await markError(assistantId);
+    await cleanupFirewall(assistantId);
     throw error;
   }
 }

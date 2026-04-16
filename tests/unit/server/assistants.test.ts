@@ -24,6 +24,7 @@ vi.mock("@/lib/db", () => ({
 // Mock providers
 vi.mock("@/lib/providers", () => ({
   getProvider: vi.fn(),
+  getHetznerProvider: vi.fn(),
 }));
 
 // Mock Cloudflare provider
@@ -49,7 +50,7 @@ vi.mock("@/lib/workflows/provisioning", () => ({
 
 import { auth } from "@clerk/nextjs/server";
 import { db } from "@/lib/db";
-import { getProvider } from "@/lib/providers";
+import { getProvider, getHetznerProvider } from "@/lib/providers";
 import {
   createDnsRecord as mockedCreateDnsRecord,
   deleteDnsRecord as mockedDeleteDnsRecord,
@@ -66,6 +67,7 @@ const mockFindFirstSnapshot = vi.mocked(db.query.snapshots.findFirst);
 const mockCanProvision = vi.mocked(canProvision);
 const mockStart = vi.mocked(start);
 const mockGetProvider = vi.mocked(getProvider);
+const mockGetHetznerProvider = vi.mocked(getHetznerProvider);
 const mockCfCreate = vi.mocked(mockedCreateDnsRecord);
 const mockCfDelete = vi.mocked(mockedDeleteDnsRecord);
 
@@ -92,6 +94,10 @@ const MOCK_ASSISTANT = {
   dnsRecordId: null as string | null,
   dnsZoneId: null as string | null,
   dnsBaseDomain: null as string | null,
+  accessMode: "ssh" as const,
+  sshAllowedIps: null as string | null,
+  firewallId: null as string | null,
+  gatewayPort: null as number | null,
   region: "fsn1",
   createdAt: new Date("2024-01-01"),
   updatedAt: new Date("2024-01-01"),
@@ -222,13 +228,16 @@ describe("Assistants API", () => {
 
       expect(mockStart).toHaveBeenCalled();
       const startArgs = mockStart.mock.calls[0]?.[1] as unknown[];
-      // [assistantId, snapshotId, region, hostname]
-      expect(startArgs).toHaveLength(4);
+      // [assistantId, snapshotId, region, hostname, accessMode, sshAllowedIps, tailscaleAuthKey]
+      expect(startArgs).toHaveLength(7);
       expect(startArgs[0]).toBe("assistant-uuid-1");
       expect(startArgs[2]).toBe("fsn1");
       expect(startArgs[3]).toBe(
         `new-assistant-${"assistant-uuid-1".slice(0, 8)}.example.io`,
       );
+      expect(startArgs[4]).toBe("ssh");
+      expect(startArgs[5]).toBe("0.0.0.0/0");
+      expect(startArgs[6]).toBeUndefined();
     });
 
     it("returns 503 when CLOUDFLARE_BASE_DOMAIN is unset", async () => {
@@ -307,6 +316,71 @@ describe("Assistants API", () => {
       });
 
       expect(res.status).toBe(503);
+    });
+
+    it("returns 422 when Tailscale mode is selected without a tailscaleAuthKey", async () => {
+      setupAuth();
+      mockCanProvision.mockResolvedValue(true);
+      mockFindFirstSnapshot.mockResolvedValue(MOCK_SNAPSHOT as never);
+
+      const res = await app.request("/api/assistants", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ name: "Test", accessMode: "tailscale_serve" }),
+      });
+
+      expect(res.status).toBe(422);
+      expect(mockStart).not.toHaveBeenCalled();
+    });
+
+    it("accepts tailscale_serve with a tailscaleAuthKey and passes all args to workflow", async () => {
+      setupAuth();
+      mockCanProvision.mockResolvedValue(true);
+      mockFindFirstSnapshot.mockResolvedValue(MOCK_SNAPSHOT as never);
+      const insertedRow = {
+        ...MOCK_ASSISTANT,
+        id: "assistant-uuid-1",
+        name: "TS Assistant",
+        status: "creating",
+        providerServerId: null,
+        ipv4: null,
+        accessMode: "tailscale_serve" as const,
+      };
+      mockInsertChain(insertedRow);
+      mockUpdateReturningChain({
+        ...insertedRow,
+        hostname: "ts-assistant-assistan.example.io",
+        dnsBaseDomain: "example.io",
+      });
+      mockStart.mockResolvedValue({ runId: "run-2" } as never);
+
+      const res = await app.request("/api/assistants", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          name: "TS Assistant",
+          accessMode: "tailscale_serve",
+          tailscaleAuthKey: "tskey-abc123",
+        }),
+      });
+
+      expect(res.status).toBe(201);
+      const startArgs = mockStart.mock.calls[0]?.[1] as unknown[];
+      expect(startArgs[4]).toBe("tailscale_serve");
+      expect(startArgs[5]).toBe("0.0.0.0/0");
+      expect(startArgs[6]).toBe("tskey-abc123");
+    });
+
+    it("returns 400 for invalid accessMode", async () => {
+      setupAuth();
+
+      const res = await app.request("/api/assistants", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ name: "Test", accessMode: "invalid_mode" }),
+      });
+
+      expect(res.status).toBe(400);
     });
   });
 
@@ -535,6 +609,67 @@ describe("Assistants API", () => {
         deleteServer: vi.fn().mockResolvedValue(undefined),
       } as never);
       mockCfDelete.mockRejectedValue(new Error("CF unreachable"));
+      mockDeleteChain();
+
+      const res = await app.request("/api/assistants/assistant-uuid-1", {
+        method: "DELETE",
+      });
+
+      expect(res.status).toBe(200);
+      const body = await res.json();
+      expect(body.deleted).toBe(true);
+    });
+
+    it("deletes the Hetzner cloud firewall when firewallId is set", async () => {
+      setupAuth();
+      mockFindFirstAssistant.mockResolvedValue({
+        ...MOCK_ASSISTANT,
+        firewallId: "fw-999",
+      } as never);
+      const mockDeleteFirewall = vi.fn().mockResolvedValue(undefined);
+      mockGetProvider.mockReturnValue({
+        deleteServer: vi.fn().mockResolvedValue(undefined),
+      } as never);
+      mockGetHetznerProvider.mockReturnValue({
+        deleteFirewall: mockDeleteFirewall,
+      } as never);
+      mockDeleteChain();
+
+      const res = await app.request("/api/assistants/assistant-uuid-1", {
+        method: "DELETE",
+      });
+
+      expect(res.status).toBe(200);
+      expect(mockDeleteFirewall).toHaveBeenCalledWith("fw-999");
+    });
+
+    it("does not call deleteFirewall when firewallId is null", async () => {
+      setupAuth();
+      mockFindFirstAssistant.mockResolvedValue(MOCK_ASSISTANT as never);
+      mockGetProvider.mockReturnValue({
+        deleteServer: vi.fn().mockResolvedValue(undefined),
+      } as never);
+      mockDeleteChain();
+
+      await app.request("/api/assistants/assistant-uuid-1", {
+        method: "DELETE",
+      });
+
+      expect(mockGetHetznerProvider).not.toHaveBeenCalled();
+    });
+
+    it("swallows firewall delete errors and still deletes the assistant", async () => {
+      setupAuth();
+      mockFindFirstAssistant.mockResolvedValue({
+        ...MOCK_ASSISTANT,
+        firewallId: "fw-999",
+      } as never);
+      mockGetProvider.mockReturnValue({
+        deleteServer: vi.fn().mockResolvedValue(undefined),
+      } as never);
+      mockGetHetznerProvider.mockReturnValue({
+        deleteFirewall: vi.fn().mockRejectedValue(new Error("FW API down")),
+      } as never);
       mockDeleteChain();
 
       const res = await app.request("/api/assistants/assistant-uuid-1", {
