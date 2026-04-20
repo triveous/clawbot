@@ -4,6 +4,13 @@ export interface ProviderServer {
   status: "initializing" | "running" | "off" | "deleting";
 }
 
+export interface FirewallRule {
+  direction: "in" | "out";
+  protocol: "tcp" | "udp" | "icmp";
+  port?: string;
+  source_ips?: string[];
+}
+
 export interface CreateServerOptions {
   name: string;
   image: string;
@@ -11,6 +18,7 @@ export interface CreateServerOptions {
   serverType: string;
   userData?: string;
   sshKeys?: string[];
+  firewalls?: string[];
 }
 
 export interface CreateServerResult {
@@ -25,6 +33,13 @@ export interface ProviderInterface {
   powerOn(serverId: string): Promise<void>;
   powerOff(serverId: string): Promise<void>;
   reboot(serverId: string): Promise<void>;
+  createFirewall(
+    name: string,
+    rules: FirewallRule[],
+  ): Promise<{ firewallId: string }>;
+  attachFirewall(firewallId: string, serverId: string): Promise<void>;
+  detachFirewall(firewallId: string, serverId: string): Promise<void>;
+  deleteFirewall(firewallId: string): Promise<void>;
 }
 
 export class ProviderError extends Error {

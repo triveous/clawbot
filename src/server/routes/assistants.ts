@@ -7,7 +7,13 @@ import { assistants, snapshots } from "@/lib/db/schema";
 import type { User, Assistant } from "@/lib/db/schema";
 import { canProvision } from "@/lib/stripe/stubs";
 import { getProvider } from "@/lib/providers";
+import {
+  createDnsRecord,
+  deleteDnsRecord,
+} from "@/lib/providers/cloudflare";
 import { provisionAssistant } from "@/lib/workflows/provisioning";
+import { generateHostnameSlug, buildFqdn } from "@/lib/workflows/slug";
+import { getHetznerProvider } from "@/lib/providers";
 import type { AssistantResponse } from "@/types/assistant";
 
 const VALID_REGIONS = ["fsn1", "nbg1", "hel1"] as const;
@@ -20,7 +26,10 @@ function toAssistantResponse(assistant: Assistant): AssistantResponse {
     status: assistant.status,
     provider: assistant.provider,
     ipv4: assistant.ipv4,
+    hostname: assistant.hostname,
     region: assistant.region,
+    accessMode: assistant.accessMode,
+    gatewayPort: assistant.gatewayPort,
     createdAt: assistant.createdAt.toISOString(),
   };
 }
@@ -52,7 +61,13 @@ export const assistantsRoute = new Hono()
   // Create assistant
   .post("/", async (c) => {
     const dbUser = c.get("dbUser");
-    const body = await c.req.json<{ name?: string; region?: string }>();
+    const body = await c.req.json<{
+      name?: string;
+      region?: string;
+      accessMode?: string;
+      sshAllowedIps?: string;
+      tailscaleAuthKey?: string;
+    }>();
 
     if (!body.name || body.name.trim().length === 0) {
       throw new HTTPException(400, { message: "Assistant name is required" });
@@ -67,6 +82,24 @@ export const assistantsRoute = new Hono()
     if (!VALID_REGIONS.includes(region as (typeof VALID_REGIONS)[number])) {
       throw new HTTPException(400, {
         message: `Invalid region. Must be one of: ${VALID_REGIONS.join(", ")}`,
+      });
+    }
+
+    const VALID_ACCESS_MODES = ["ssh", "tailscale_serve"] as const;
+    type ValidAccessMode = (typeof VALID_ACCESS_MODES)[number];
+    const accessMode: ValidAccessMode = (body.accessMode as ValidAccessMode) ?? "ssh";
+    if (!VALID_ACCESS_MODES.includes(accessMode)) {
+      throw new HTTPException(400, {
+        message: `Invalid accessMode. Must be one of: ${VALID_ACCESS_MODES.join(", ")}`,
+      });
+    }
+
+    if (
+      accessMode === "tailscale_serve" &&
+      !body.tailscaleAuthKey
+    ) {
+      throw new HTTPException(422, {
+        message: "tailscaleAuthKey is required for Tailscale access modes",
       });
     }
 
@@ -89,7 +122,14 @@ export const assistantsRoute = new Hono()
       });
     }
 
-    const [assistant] = await db
+    const baseDomain = process.env.CLOUDFLARE_BASE_DOMAIN;
+    if (!baseDomain) {
+      throw new HTTPException(503, {
+        message: "CLOUDFLARE_BASE_DOMAIN is not configured",
+      });
+    }
+
+    const [inserted] = await db
       .insert(assistants)
       .values({
         userId: dbUser.id,
@@ -97,13 +137,28 @@ export const assistantsRoute = new Hono()
         status: "creating",
         provider: "hetzner",
         region,
+        accessMode,
+        sshAllowedIps: body.sshAllowedIps ?? null,
       })
+      .returning();
+
+    const slug = generateHostnameSlug(inserted.name, inserted.id);
+    const hostname = buildFqdn(slug, baseDomain);
+
+    const [assistant] = await db
+      .update(assistants)
+      .set({ hostname, dnsBaseDomain: baseDomain })
+      .where(eq(assistants.id, inserted.id))
       .returning();
 
     await start(provisionAssistant, [
       assistant.id,
       activeSnapshot.providerSnapshotId,
       region,
+      hostname,
+      accessMode,
+      body.sshAllowedIps ?? "0.0.0.0/0",
+      body.tailscaleAuthKey,
     ]);
 
     return c.json(toAssistantResponse(assistant), 201);
@@ -192,6 +247,26 @@ export const assistantsRoute = new Hono()
       throw new HTTPException(404, { message: "Assistant not found" });
     }
 
+    if (assistant.dnsRecordId && assistant.dnsZoneId) {
+      try {
+        await deleteDnsRecord({
+          recordId: assistant.dnsRecordId,
+          zoneId: assistant.dnsZoneId,
+        });
+      } catch {
+        // Orphan DNS record — acceptable; reconciliation job will clean up (see kanban Deferred)
+      }
+    }
+
+    if (assistant.firewallId && assistant.providerServerId) {
+      try {
+        const hetzner = getHetznerProvider();
+        await hetzner.detachFirewall(assistant.firewallId, assistant.providerServerId);
+      } catch {
+        // Best-effort — server may already be gone
+      }
+    }
+
     if (assistant.providerServerId) {
       try {
         const provider = getProvider(assistant.provider);
@@ -201,7 +276,71 @@ export const assistantsRoute = new Hono()
       }
     }
 
+    if (assistant.firewallId) {
+      try {
+        const hetzner = getHetznerProvider();
+        await hetzner.deleteFirewall(assistant.firewallId);
+      } catch {
+        // Best-effort; firewall can be cleaned up manually
+      }
+    }
+
     await db.delete(assistants).where(eq(assistants.id, assistantId));
 
     return c.json({ deleted: true });
+  })
+
+  // Regenerate hostname / DNS record
+  .post("/:id/regenerate-hostname", async (c) => {
+    const dbUser = c.get("dbUser");
+    const assistantId = c.req.param("id");
+
+    const assistant = await getOwnedAssistant(dbUser, assistantId);
+    if (!assistant) {
+      throw new HTTPException(404, { message: "Assistant not found" });
+    }
+
+    if (!assistant.ipv4) {
+      throw new HTTPException(409, {
+        message: "Assistant has no IPv4 yet — cannot create DNS record",
+      });
+    }
+
+    const baseDomain = process.env.CLOUDFLARE_BASE_DOMAIN;
+    if (!baseDomain) {
+      throw new HTTPException(503, {
+        message: "CLOUDFLARE_BASE_DOMAIN is not configured",
+      });
+    }
+
+    // If an existing record is on file, tear it down first (best-effort).
+    if (assistant.dnsRecordId && assistant.dnsZoneId) {
+      try {
+        await deleteDnsRecord({
+          recordId: assistant.dnsRecordId,
+          zoneId: assistant.dnsZoneId,
+        });
+      } catch {
+        // best-effort; fall through and create the new record
+      }
+    }
+
+    const slug = generateHostnameSlug(assistant.name, assistant.id);
+    const { recordId, zoneId, fqdn } = await createDnsRecord({
+      name: slug,
+      ipv4: assistant.ipv4,
+    });
+
+    const [updated] = await db
+      .update(assistants)
+      .set({
+        hostname: fqdn,
+        dnsRecordId: recordId,
+        dnsZoneId: zoneId,
+        dnsBaseDomain: baseDomain,
+      })
+      .where(eq(assistants.id, assistantId))
+      .returning();
+
+    return c.json(toAssistantResponse(updated));
   });
