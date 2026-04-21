@@ -5,6 +5,7 @@ vi.mock("@clerk/nextjs/server", () => ({
   auth: vi.fn(),
   currentUser: vi.fn(),
   clerkMiddleware: vi.fn(),
+  clerkClient: vi.fn(),
 }));
 
 // Mock DB to avoid needing a real database in unit tests
@@ -12,6 +13,9 @@ vi.mock("@/lib/db", () => ({
   db: {
     query: {
       users: {
+        findFirst: vi.fn(),
+      },
+      organizations: {
         findFirst: vi.fn(),
       },
       assistants: {
@@ -36,6 +40,13 @@ vi.mock("@/lib/stripe/stubs", () => ({
   canProvision: vi.fn().mockResolvedValue(true),
 }));
 
+// Mock billing credits (imported by assistants route)
+vi.mock("@/lib/billing/credits", () => ({
+  canProvision: vi.fn().mockResolvedValue(true),
+  consumeCredit: vi.fn().mockResolvedValue("credit-id"),
+  releaseCredit: vi.fn().mockResolvedValue(undefined),
+}));
+
 // Mock workflow/api
 vi.mock("workflow/api", () => ({
   start: vi.fn(),
@@ -57,7 +68,8 @@ import app from "@/server";
 
 const mockAuth = vi.mocked(auth);
 const mockCurrentUser = vi.mocked(currentUser);
-const mockFindFirst = vi.mocked(db.query.users.findFirst);
+const mockFindFirstUser = vi.mocked(db.query.users.findFirst);
+const mockFindFirstOrg = vi.mocked(db.query.organizations.findFirst);
 
 const MOCK_DB_USER = {
   id: "db-uuid-123",
@@ -65,6 +77,15 @@ const MOCK_DB_USER = {
   email: "test@example.com",
   name: "Test User",
   avatarUrl: null,
+  createdAt: new Date(),
+  updatedAt: new Date(),
+};
+
+const MOCK_ORG = {
+  id: "org_test456",
+  name: "Test Workspace",
+  slug: "test-workspace",
+  billingCustomerId: null,
   createdAt: new Date(),
   updatedAt: new Date(),
 };
@@ -100,9 +121,9 @@ describe("Hono API — protected routes (unauthenticated)", () => {
 
 describe("Hono API — protected routes (user exists in DB)", () => {
   beforeEach(() => {
-    mockAuth.mockResolvedValue({ userId: "user_test123" } as never);
-    // User already in DB — no Clerk profile fetch needed
-    mockFindFirst.mockResolvedValue(MOCK_DB_USER as never);
+    mockAuth.mockResolvedValue({ userId: "user_test123", orgId: "org_test456" } as never);
+    mockFindFirstUser.mockResolvedValue(MOCK_DB_USER as never);
+    mockFindFirstOrg.mockResolvedValue(MOCK_ORG as never);
   });
 
   it("GET /api/assistants returns 200 with assistants array", async () => {
@@ -127,9 +148,10 @@ describe("Hono API — protected routes (user exists in DB)", () => {
 
 describe("Hono API — lazy user creation (webhook never fired)", () => {
   beforeEach(() => {
-    mockAuth.mockResolvedValue({ userId: "user_new456" } as never);
+    mockAuth.mockResolvedValue({ userId: "user_new456", orgId: "org_test456" } as never);
     // User NOT in DB — simulates webhook never having fired
-    mockFindFirst.mockResolvedValue(undefined as never);
+    mockFindFirstUser.mockResolvedValue(undefined as never);
+    mockFindFirstOrg.mockResolvedValue(MOCK_ORG as never);
     // Clerk profile is available from session
     mockCurrentUser.mockResolvedValue({
       id: "user_new456",

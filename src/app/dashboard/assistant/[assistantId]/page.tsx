@@ -1,16 +1,10 @@
-export default async function AssistantDetailPage({
-  params,
-}: {
-  params: Promise<{ assistantId: string }>;
-}) {
-  const { assistantId } = await params;
+import { auth } from "@clerk/nextjs/server";
+import { redirect } from "next/navigation";
 
-  return (
-    <div>
-      <h1 className="text-2xl font-bold">Assistant: {assistantId}</h1>
-      <p className="mt-2 text-sm text-gray-400">
-        Phase 6: Assistant detail coming soon
-      </p>
-    </div>
-  );
+export default async function Page({ params }: { params: Promise<{ assistantId: string }> }) {
+  const { userId, orgId } = await auth();
+  const { assistantId } = await params;
+  if (!userId) redirect("/login");
+  if (!orgId) redirect("/onboarding/org");
+  redirect(`/dashboard/${orgId}/assistant/${assistantId}`);
 }

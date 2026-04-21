@@ -1,19 +1,12 @@
-import { auth, currentUser } from "@clerk/nextjs/server";
+import { auth, clerkClient, currentUser } from "@clerk/nextjs/server";
 import type { Context, Next } from "hono";
 import { HTTPException } from "hono/http-exception";
 import { eq } from "drizzle-orm";
 import { db } from "@/lib/db";
-import { users } from "@/lib/db/schema";
-import type { User } from "@/lib/db/schema";
+import { users, organizations } from "@/lib/db/schema";
+import type { User, Organization } from "@/lib/db/schema";
+import { upsertOrganization } from "@/lib/clerk/org-sync";
 
-/**
- * Ensures the authenticated Clerk user has a corresponding row in the `users`
- * table. Called on every protected request.
- *
- * Why: Clerk webhooks (user.created) sync users to DB, but webhooks can be
- * delayed or misconfigured. This guarantees the user record always exists
- * before any DB operation that references users.id via FK.
- */
 async function ensureUser(clerkId: string): Promise<User> {
   const existing = await db.query.users.findFirst({
     where: eq(users.clerkId, clerkId),
@@ -21,13 +14,12 @@ async function ensureUser(clerkId: string): Promise<User> {
 
   if (existing) return existing;
 
-  // User not in DB yet — fetch profile from Clerk session (no extra API call)
   const clerkUser = await currentUser();
   if (!clerkUser) throw new HTTPException(401, { message: "Unauthorized" });
 
   const email =
     clerkUser.emailAddresses.find(
-      (e) => e.id === clerkUser.primaryEmailAddressId
+      (e) => e.id === clerkUser.primaryEmailAddressId,
     )?.emailAddress ?? clerkUser.emailAddresses[0]?.emailAddress;
 
   if (!email) throw new HTTPException(400, { message: "User has no email" });
@@ -58,15 +50,57 @@ async function ensureUser(clerkId: string): Promise<User> {
   return created;
 }
 
+async function ensureOrg(
+  clerkUserId: string,
+  clerkOrgId: string,
+): Promise<Organization> {
+  const existing = await db.query.organizations.findFirst({
+    where: eq(organizations.id, clerkOrgId),
+  });
+  if (existing) return existing;
+
+  const client = await clerkClient();
+  const org = await client.organizations.getOrganization({ organizationId: clerkOrgId });
+  return upsertOrganization({
+    id: org.id,
+    name: org.name,
+    slug: org.slug ?? null,
+  });
+}
+
+async function autoCreatePersonalOrg(
+  clerkUserId: string,
+): Promise<Organization> {
+  const client = await clerkClient();
+  const clerkUser = await currentUser();
+  const displayName = clerkUser
+    ? `${[clerkUser.firstName, clerkUser.lastName].filter(Boolean).join(" ") || "My"}'s Workspace`
+    : "My Workspace";
+
+  const org = await client.organizations.createOrganization({
+    name: displayName,
+    createdBy: clerkUserId,
+  });
+
+  await client.organizations.updateOrganizationMembership({
+    organizationId: org.id,
+    userId: clerkUserId,
+    role: "org:admin",
+  });
+
+  return upsertOrganization({ id: org.id, name: org.name, slug: org.slug ?? null });
+}
+
 /**
  * Hono middleware that:
  * 1. Validates Clerk session (401 if missing)
- * 2. Guarantees user row exists in DB (creates from Clerk profile if needed)
- * 3. Sets `userId` (Clerk ID) and `dbUser` on context for downstream handlers
+ * 2. Guarantees user row exists in DB
+ * 3. Guarantees an active org exists; auto-creates a personal org if none
+ * 4. Sets userId, dbUser, orgId, dbOrg on context
  */
 export function clerkAuth() {
   return async (c: Context, next: Next) => {
-    const { userId } = await auth();
+    const { userId, orgId } = await auth();
 
     if (!userId) {
       throw new HTTPException(401, { message: "Unauthorized" });
@@ -74,24 +108,35 @@ export function clerkAuth() {
 
     const dbUser = await ensureUser(userId);
 
+    let resolvedOrgId = orgId;
+    let dbOrg: Organization;
+
+    if (resolvedOrgId) {
+      dbOrg = await ensureOrg(userId, resolvedOrgId);
+    } else {
+      dbOrg = await autoCreatePersonalOrg(userId);
+      resolvedOrgId = dbOrg.id;
+    }
+
     c.set("userId", userId);
     c.set("dbUser", dbUser);
+    c.set("orgId", resolvedOrgId);
+    c.set("dbOrg", dbOrg);
 
-    // Enrich the request-scoped logger with userId so all downstream logs
-    // for this request automatically include the authenticated user.
     const logger = c.get("logger");
     if (logger) {
-      c.set("logger", logger.with({ userId }));
+      c.set("logger", logger.with({ userId, orgId: resolvedOrgId }));
     }
 
     await next();
   };
 }
 
-// Extend Hono context type
 declare module "hono" {
   interface ContextVariableMap {
     userId: string;
     dbUser: User;
+    orgId: string;
+    dbOrg: Organization;
   }
 }

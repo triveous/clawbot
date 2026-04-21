@@ -44,6 +44,13 @@ interface HetznerFirewallResponse {
   firewall: {
     id: number;
     name: string;
+    rules: FirewallRule[];
+  };
+}
+
+interface HetznerMetricsResponse {
+  metrics: {
+    time_series: Record<string, { values: [number, string][] }>;
   };
 }
 
@@ -249,5 +256,38 @@ export class HetznerProvider implements ProviderInterface {
       if (err instanceof ProviderError && err.statusCode === 404) return;
       throw err;
     }
+  }
+
+  async getFirewall(firewallId: string): Promise<{ firewallId: string; rules: FirewallRule[] }> {
+    const data = await this.request<HetznerFirewallResponse>(`/firewalls/${firewallId}`);
+    return { firewallId: String(data.firewall.id), rules: data.firewall.rules };
+  }
+
+  async updateFirewall(firewallId: string, rules: FirewallRule[]): Promise<void> {
+    await this.request(`/firewalls/${firewallId}/actions/set_rules`, {
+      method: "POST",
+      body: JSON.stringify({ rules }),
+    });
+  }
+
+  async getMetrics(
+    serverId: string,
+    type: "cpu" | "disk" | "network",
+    start: Date,
+    end: Date,
+  ): Promise<{ series: Record<string, [number, number][]> }> {
+    const params = new URLSearchParams({
+      type,
+      start: start.toISOString(),
+      end: end.toISOString(),
+    });
+    const data = await this.request<HetznerMetricsResponse>(
+      `/servers/${serverId}/metrics?${params}`,
+    );
+    const series: Record<string, [number, number][]> = {};
+    for (const [key, ts] of Object.entries(data.metrics.time_series)) {
+      series[key] = ts.values.map(([t, v]) => [t, parseFloat(v)]);
+    }
+    return { series };
   }
 }

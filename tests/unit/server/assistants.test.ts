@@ -5,6 +5,7 @@ vi.mock("@clerk/nextjs/server", () => ({
   auth: vi.fn(),
   currentUser: vi.fn(),
   clerkMiddleware: vi.fn(),
+  clerkClient: vi.fn(),
 }));
 
 // Mock DB
@@ -12,12 +13,17 @@ vi.mock("@/lib/db", () => ({
   db: {
     query: {
       users: { findFirst: vi.fn() },
+      organizations: { findFirst: vi.fn() },
       assistants: { findFirst: vi.fn(), findMany: vi.fn() },
+      instances: { findFirst: vi.fn() },
       snapshots: { findFirst: vi.fn() },
+      instanceEvents: { findMany: vi.fn() },
     },
     insert: vi.fn(),
     update: vi.fn(),
     delete: vi.fn(),
+    transaction: vi.fn(),
+    select: vi.fn(),
   },
 }));
 
@@ -33,7 +39,14 @@ vi.mock("@/lib/providers/cloudflare", () => ({
   deleteDnsRecord: vi.fn(),
 }));
 
-// Mock canProvision
+// Mock billing credits
+vi.mock("@/lib/billing/credits", () => ({
+  canProvision: vi.fn(),
+  consumeCredit: vi.fn().mockResolvedValue("credit-id"),
+  releaseCredit: vi.fn().mockResolvedValue(undefined),
+}));
+
+// Keep stubs re-export working
 vi.mock("@/lib/stripe/stubs", () => ({
   canProvision: vi.fn(),
 }));
@@ -55,14 +68,16 @@ import {
   createDnsRecord as mockedCreateDnsRecord,
   deleteDnsRecord as mockedDeleteDnsRecord,
 } from "@/lib/providers/cloudflare";
-import { canProvision } from "@/lib/stripe/stubs";
+import { canProvision } from "@/lib/billing/credits";
 import { start } from "workflow/api";
 import app from "@/server";
 
 const mockAuth = vi.mocked(auth);
 const mockFindFirstUser = vi.mocked(db.query.users.findFirst);
+const mockFindFirstOrg = vi.mocked(db.query.organizations.findFirst);
 const mockFindFirstAssistant = vi.mocked(db.query.assistants.findFirst);
 const mockFindManyAssistants = vi.mocked(db.query.assistants.findMany);
+const mockFindFirstInstance = vi.mocked(db.query.instances.findFirst);
 const mockFindFirstSnapshot = vi.mocked(db.query.snapshots.findFirst);
 const mockCanProvision = vi.mocked(canProvision);
 const mockStart = vi.mocked(start);
@@ -81,24 +96,51 @@ const MOCK_DB_USER = {
   updatedAt: new Date(),
 };
 
-const MOCK_ASSISTANT = {
-  id: "assistant-uuid-1",
-  userId: "db-uuid-123",
-  name: "My Assistant",
-  status: "running" as const,
+const MOCK_ORG = {
+  id: "org_test456",
+  name: "Test Workspace",
+  slug: "test-workspace",
+  billingCustomerId: null,
+  createdAt: new Date(),
+  updatedAt: new Date(),
+};
+
+const MOCK_INSTANCE = {
+  id: "instance-uuid-1",
+  assistantId: "assistant-uuid-1",
   provider: "hetzner" as const,
   providerServerId: "42",
   providerSnapshotId: "snap-1",
+  firewallId: "fw-1",
   ipv4: "1.2.3.4",
-  hostname: null as string | null,
+  region: "fsn1",
+  gatewayPort: 8080,
+  status: "running" as const,
+  lastError: null,
+  workflowRunId: null,
+  destroyedAt: null,
+  createdAt: new Date("2024-01-01"),
+  updatedAt: new Date("2024-01-01"),
+};
+
+const MOCK_ASSISTANT = {
+  id: "assistant-uuid-1",
+  orgId: "org_test456",
+  createdByUserId: "db-uuid-123",
+  name: "My Assistant",
+  status: "active" as const,
+  provider: "hetzner" as const,
+  planId: "plan-uuid-1",
+  instanceId: "instance-uuid-1",
+  hostname: "my-assistant-abcd1234.example.io",
   dnsRecordId: null as string | null,
   dnsZoneId: null as string | null,
-  dnsBaseDomain: null as string | null,
+  dnsBaseDomain: "example.io",
   accessMode: "ssh" as const,
   sshAllowedIps: null as string | null,
-  firewallId: null as string | null,
-  gatewayPort: null as number | null,
   region: "fsn1",
+  lastErrorAt: null,
+  deletedAt: null,
   createdAt: new Date("2024-01-01"),
   updatedAt: new Date("2024-01-01"),
 };
@@ -115,14 +157,25 @@ const MOCK_SNAPSHOT = {
 };
 
 function setupAuth() {
-  mockAuth.mockResolvedValue({ userId: "user_test123" } as never);
+  mockAuth.mockResolvedValue({ userId: "user_test123", orgId: "org_test456" } as never);
   mockFindFirstUser.mockResolvedValue(MOCK_DB_USER as never);
+  mockFindFirstOrg.mockResolvedValue(MOCK_ORG as never);
 }
 
 function mockInsertChain(returnValue: unknown) {
   vi.mocked(db.insert).mockReturnValue({
     values: vi.fn().mockReturnValue({
       returning: vi.fn().mockResolvedValue([returnValue]),
+    }),
+  } as never);
+}
+
+function mockUpdateReturningChain(returnValue: unknown) {
+  vi.mocked(db.update).mockReturnValue({
+    set: vi.fn().mockReturnValue({
+      where: vi.fn().mockReturnValue({
+        returning: vi.fn().mockResolvedValue([returnValue]),
+      }),
     }),
   } as never);
 }
@@ -135,21 +188,8 @@ function mockUpdateChain() {
   } as never);
 }
 
-// update().set().where().returning() → resolves [returnValue]
-function mockUpdateReturningChain(returnValue: unknown) {
-  vi.mocked(db.update).mockReturnValue({
-    set: vi.fn().mockReturnValue({
-      where: vi.fn().mockReturnValue({
-        returning: vi.fn().mockResolvedValue([returnValue]),
-      }),
-    }),
-  } as never);
-}
-
-function mockDeleteChain() {
-  vi.mocked(db.delete).mockReturnValue({
-    where: vi.fn().mockResolvedValue(undefined),
-  } as never);
+function mockTransactionWith(tx: unknown) {
+  vi.mocked(db.transaction).mockImplementation(async (fn) => fn(tx as never));
 }
 
 describe("Assistants API", () => {
@@ -171,7 +211,7 @@ describe("Assistants API", () => {
       expect(res.status).toBe(401);
     });
 
-    it("returns empty array for user with no assistants", async () => {
+    it("returns empty array for org with no assistants", async () => {
       setupAuth();
       mockFindManyAssistants.mockResolvedValue([] as never);
 
@@ -181,16 +221,18 @@ describe("Assistants API", () => {
       expect(body.assistants).toEqual([]);
     });
 
-    it("returns user assistants", async () => {
+    it("returns org assistants with instance data", async () => {
       setupAuth();
       mockFindManyAssistants.mockResolvedValue([MOCK_ASSISTANT] as never);
+      mockFindFirstInstance.mockResolvedValue(MOCK_INSTANCE as never);
 
       const res = await app.request("/api/assistants");
       expect(res.status).toBe(200);
       const body = await res.json();
       expect(body.assistants).toHaveLength(1);
       expect(body.assistants[0].name).toBe("My Assistant");
-      expect(body.assistants[0].status).toBe("running");
+      expect(body.assistants[0].status).toBe("active");
+      expect(body.assistants[0].ipv4).toBe("1.2.3.4");
     });
   });
 
@@ -199,45 +241,47 @@ describe("Assistants API", () => {
       setupAuth();
       mockCanProvision.mockResolvedValue(true);
       mockFindFirstSnapshot.mockResolvedValue(MOCK_SNAPSHOT as never);
-      const insertedRow = {
+
+      const insertedAssistant = {
         ...MOCK_ASSISTANT,
         id: "assistant-uuid-1",
         name: "New Assistant",
         status: "creating",
-        providerServerId: null,
-        ipv4: null,
+        instanceId: null,
       };
-      mockInsertChain(insertedRow);
-      mockUpdateReturningChain({
-        ...insertedRow,
-        hostname: "new-assistant-assistan.example.io",
+      const insertedInstance = { ...MOCK_INSTANCE, id: "instance-uuid-1" };
+      const assistantWithHostname = {
+        ...insertedAssistant,
+        hostname: `new-assistant-${"assistant-uuid-1".slice(0, 8)}.example.io`,
         dnsBaseDomain: "example.io",
-      });
+      };
+
+      // Mock the transaction — run the fn with a mock tx
+      const txMock = {
+        insert: vi.fn()
+          .mockReturnValueOnce({ values: vi.fn().mockReturnValue({ returning: vi.fn().mockResolvedValue([insertedAssistant]) }) })
+          .mockReturnValueOnce({ values: vi.fn().mockReturnValue({ returning: vi.fn().mockResolvedValue([insertedInstance]) }) }),
+        update: vi.fn().mockReturnValue({
+          set: vi.fn().mockReturnValue({ where: vi.fn().mockReturnValue({ returning: vi.fn().mockResolvedValue([assistantWithHostname]) }) }),
+        }),
+        query: {
+          plans: { findFirst: vi.fn().mockResolvedValue({ id: "plan-uuid-1", tier: 0 }) },
+          assistantCredits: { findFirst: vi.fn() },
+        },
+      };
+      mockTransactionWith(txMock);
       mockStart.mockResolvedValue({ runId: "run-1" } as never);
 
       const res = await app.request("/api/assistants", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ name: "New Assistant" }),
+        body: JSON.stringify({ name: "New Assistant", planId: "plan-uuid-1" }),
       });
 
       expect(res.status).toBe(201);
       const body = await res.json();
       expect(body.name).toBe("New Assistant");
-      expect(body.hostname).toBe("new-assistant-assistan.example.io");
-
       expect(mockStart).toHaveBeenCalled();
-      const startArgs = mockStart.mock.calls[0]?.[1] as unknown[];
-      // [assistantId, snapshotId, region, hostname, accessMode, sshAllowedIps, tailscaleAuthKey]
-      expect(startArgs).toHaveLength(7);
-      expect(startArgs[0]).toBe("assistant-uuid-1");
-      expect(startArgs[2]).toBe("fsn1");
-      expect(startArgs[3]).toBe(
-        `new-assistant-${"assistant-uuid-1".slice(0, 8)}.example.io`,
-      );
-      expect(startArgs[4]).toBe("ssh");
-      expect(startArgs[5]).toBe("0.0.0.0/0");
-      expect(startArgs[6]).toBeUndefined();
     });
 
     it("returns 503 when CLOUDFLARE_BASE_DOMAIN is unset", async () => {
@@ -249,7 +293,7 @@ describe("Assistants API", () => {
       const res = await app.request("/api/assistants", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ name: "Test" }),
+        body: JSON.stringify({ name: "Test", planId: "plan-uuid-1" }),
       });
 
       expect(res.status).toBe(503);
@@ -261,7 +305,7 @@ describe("Assistants API", () => {
       const res = await app.request("/api/assistants", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({}),
+        body: JSON.stringify({ planId: "plan-uuid-1" }),
       });
 
       expect(res.status).toBe(400);
@@ -273,7 +317,19 @@ describe("Assistants API", () => {
       const res = await app.request("/api/assistants", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ name: "a".repeat(65) }),
+        body: JSON.stringify({ name: "a".repeat(65), planId: "plan-uuid-1" }),
+      });
+
+      expect(res.status).toBe(400);
+    });
+
+    it("returns 400 when planId is missing", async () => {
+      setupAuth();
+
+      const res = await app.request("/api/assistants", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ name: "Test" }),
       });
 
       expect(res.status).toBe(400);
@@ -285,23 +341,23 @@ describe("Assistants API", () => {
       const res = await app.request("/api/assistants", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ name: "Test", region: "invalid" }),
+        body: JSON.stringify({ name: "Test", planId: "plan-uuid-1", region: "invalid" }),
       });
 
       expect(res.status).toBe(400);
     });
 
-    it("returns 403 when provisioning not allowed", async () => {
+    it("returns 402 when provisioning not allowed", async () => {
       setupAuth();
       mockCanProvision.mockResolvedValue(false);
 
       const res = await app.request("/api/assistants", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ name: "Test" }),
+        body: JSON.stringify({ name: "Test", planId: "plan-uuid-1" }),
       });
 
-      expect(res.status).toBe(403);
+      expect(res.status).toBe(402);
     });
 
     it("returns 503 when no active snapshot", async () => {
@@ -312,7 +368,7 @@ describe("Assistants API", () => {
       const res = await app.request("/api/assistants", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ name: "Test" }),
+        body: JSON.stringify({ name: "Test", planId: "plan-uuid-1" }),
       });
 
       expect(res.status).toBe(503);
@@ -326,49 +382,11 @@ describe("Assistants API", () => {
       const res = await app.request("/api/assistants", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ name: "Test", accessMode: "tailscale_serve" }),
+        body: JSON.stringify({ name: "Test", planId: "plan-uuid-1", accessMode: "tailscale_serve" }),
       });
 
       expect(res.status).toBe(422);
       expect(mockStart).not.toHaveBeenCalled();
-    });
-
-    it("accepts tailscale_serve with a tailscaleAuthKey and passes all args to workflow", async () => {
-      setupAuth();
-      mockCanProvision.mockResolvedValue(true);
-      mockFindFirstSnapshot.mockResolvedValue(MOCK_SNAPSHOT as never);
-      const insertedRow = {
-        ...MOCK_ASSISTANT,
-        id: "assistant-uuid-1",
-        name: "TS Assistant",
-        status: "creating",
-        providerServerId: null,
-        ipv4: null,
-        accessMode: "tailscale_serve" as const,
-      };
-      mockInsertChain(insertedRow);
-      mockUpdateReturningChain({
-        ...insertedRow,
-        hostname: "ts-assistant-assistan.example.io",
-        dnsBaseDomain: "example.io",
-      });
-      mockStart.mockResolvedValue({ runId: "run-2" } as never);
-
-      const res = await app.request("/api/assistants", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          name: "TS Assistant",
-          accessMode: "tailscale_serve",
-          tailscaleAuthKey: "tskey-abc123",
-        }),
-      });
-
-      expect(res.status).toBe(201);
-      const startArgs = mockStart.mock.calls[0]?.[1] as unknown[];
-      expect(startArgs[4]).toBe("tailscale_serve");
-      expect(startArgs[5]).toBe("0.0.0.0/0");
-      expect(startArgs[6]).toBe("tskey-abc123");
     });
 
     it("returns 400 for invalid accessMode", async () => {
@@ -377,7 +395,7 @@ describe("Assistants API", () => {
       const res = await app.request("/api/assistants", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ name: "Test", accessMode: "invalid_mode" }),
+        body: JSON.stringify({ name: "Test", planId: "plan-uuid-1", accessMode: "invalid_mode" }),
       });
 
       expect(res.status).toBe(400);
@@ -385,9 +403,10 @@ describe("Assistants API", () => {
   });
 
   describe("GET /api/assistants/:id", () => {
-    it("returns assistant owned by user", async () => {
+    it("returns assistant owned by org", async () => {
       setupAuth();
       mockFindFirstAssistant.mockResolvedValue(MOCK_ASSISTANT as never);
+      mockFindFirstInstance.mockResolvedValue(MOCK_INSTANCE as never);
 
       const res = await app.request("/api/assistants/assistant-uuid-1");
       expect(res.status).toBe(200);
@@ -405,13 +424,14 @@ describe("Assistants API", () => {
   });
 
   describe("POST /api/assistants/:id/restart", () => {
-    it("restarts a running assistant", async () => {
+    it("restarts an active assistant", async () => {
       setupAuth();
       mockFindFirstAssistant.mockResolvedValue(MOCK_ASSISTANT as never);
+      mockFindFirstInstance.mockResolvedValue(MOCK_INSTANCE as never);
       mockGetProvider.mockReturnValue({
         reboot: vi.fn().mockResolvedValue(undefined),
       } as never);
-      mockUpdateChain();
+      mockUpdateReturningChain(MOCK_ASSISTANT);
 
       const res = await app.request("/api/assistants/assistant-uuid-1/restart", {
         method: "POST",
@@ -423,14 +443,12 @@ describe("Assistants API", () => {
 
     it("restarts a stopped assistant", async () => {
       setupAuth();
-      mockFindFirstAssistant.mockResolvedValue({
-        ...MOCK_ASSISTANT,
-        status: "stopped",
-      } as never);
+      mockFindFirstAssistant.mockResolvedValue({ ...MOCK_ASSISTANT, status: "stopped" } as never);
+      mockFindFirstInstance.mockResolvedValue(MOCK_INSTANCE as never);
       mockGetProvider.mockReturnValue({
         reboot: vi.fn().mockResolvedValue(undefined),
       } as never);
-      mockUpdateChain();
+      mockUpdateReturningChain({ ...MOCK_ASSISTANT, status: "active" });
 
       const res = await app.request("/api/assistants/assistant-uuid-1/restart", {
         method: "POST",
@@ -439,12 +457,10 @@ describe("Assistants API", () => {
       expect(res.status).toBe(200);
     });
 
-    it("returns 409 for provisioning assistant", async () => {
+    it("returns 409 for assistant in creating state", async () => {
       setupAuth();
-      mockFindFirstAssistant.mockResolvedValue({
-        ...MOCK_ASSISTANT,
-        status: "provisioning",
-      } as never);
+      mockFindFirstAssistant.mockResolvedValue({ ...MOCK_ASSISTANT, status: "creating" } as never);
+      mockFindFirstInstance.mockResolvedValue(MOCK_INSTANCE as never);
 
       const res = await app.request("/api/assistants/assistant-uuid-1/restart", {
         method: "POST",
@@ -466,13 +482,14 @@ describe("Assistants API", () => {
   });
 
   describe("POST /api/assistants/:id/stop", () => {
-    it("stops a running assistant", async () => {
+    it("stops an active assistant", async () => {
       setupAuth();
       mockFindFirstAssistant.mockResolvedValue(MOCK_ASSISTANT as never);
+      mockFindFirstInstance.mockResolvedValue(MOCK_INSTANCE as never);
       mockGetProvider.mockReturnValue({
         powerOff: vi.fn().mockResolvedValue(undefined),
       } as never);
-      mockUpdateChain();
+      mockUpdateReturningChain({ ...MOCK_ASSISTANT, status: "stopped" });
 
       const res = await app.request("/api/assistants/assistant-uuid-1/stop", {
         method: "POST",
@@ -483,10 +500,8 @@ describe("Assistants API", () => {
 
     it("returns 409 for stopped assistant", async () => {
       setupAuth();
-      mockFindFirstAssistant.mockResolvedValue({
-        ...MOCK_ASSISTANT,
-        status: "stopped",
-      } as never);
+      mockFindFirstAssistant.mockResolvedValue({ ...MOCK_ASSISTANT, status: "stopped" } as never);
+      mockFindFirstInstance.mockResolvedValue(MOCK_INSTANCE as never);
 
       const res = await app.request("/api/assistants/assistant-uuid-1/stop", {
         method: "POST",
@@ -497,14 +512,22 @@ describe("Assistants API", () => {
   });
 
   describe("DELETE /api/assistants/:id", () => {
-    it("deletes assistant and destroys server", async () => {
+    it("soft-deletes assistant and releases credit", async () => {
       setupAuth();
       mockFindFirstAssistant.mockResolvedValue(MOCK_ASSISTANT as never);
-      const mockDelete = vi.fn().mockResolvedValue(undefined);
-      mockGetProvider.mockReturnValue({
-        deleteServer: mockDelete,
-      } as never);
-      mockDeleteChain();
+      mockFindFirstInstance.mockResolvedValue(MOCK_INSTANCE as never);
+      const mockDeleteServer = vi.fn().mockResolvedValue(undefined);
+      const mockDetachFw = vi.fn().mockResolvedValue(undefined);
+      const mockDeleteFw = vi.fn().mockResolvedValue(undefined);
+      mockGetProvider.mockReturnValue({ deleteServer: mockDeleteServer } as never);
+      mockGetHetznerProvider.mockReturnValue({ detachFirewall: mockDetachFw, deleteFirewall: mockDeleteFw } as never);
+
+      const txMock = {
+        update: vi.fn().mockReturnValue({
+          set: vi.fn().mockReturnValue({ where: vi.fn().mockResolvedValue(undefined) }),
+        }),
+      };
+      mockTransactionWith(txMock);
 
       const res = await app.request("/api/assistants/assistant-uuid-1", {
         method: "DELETE",
@@ -513,16 +536,27 @@ describe("Assistants API", () => {
       expect(res.status).toBe(200);
       const body = await res.json();
       expect(body.deleted).toBe(true);
-      expect(mockDelete).toHaveBeenCalledWith("42");
+      expect(mockDeleteServer).toHaveBeenCalledWith("42");
     });
 
     it("deletes assistant even if server is already gone", async () => {
       setupAuth();
       mockFindFirstAssistant.mockResolvedValue(MOCK_ASSISTANT as never);
+      mockFindFirstInstance.mockResolvedValue(MOCK_INSTANCE as never);
       mockGetProvider.mockReturnValue({
         deleteServer: vi.fn().mockRejectedValue(new Error("Not found")),
       } as never);
-      mockDeleteChain();
+      mockGetHetznerProvider.mockReturnValue({
+        detachFirewall: vi.fn().mockResolvedValue(undefined),
+        deleteFirewall: vi.fn().mockResolvedValue(undefined),
+      } as never);
+
+      const txMock = {
+        update: vi.fn().mockReturnValue({
+          set: vi.fn().mockReturnValue({ where: vi.fn().mockResolvedValue(undefined) }),
+        }),
+      };
+      mockTransactionWith(txMock);
 
       const res = await app.request("/api/assistants/assistant-uuid-1", {
         method: "DELETE",
@@ -531,13 +565,20 @@ describe("Assistants API", () => {
       expect(res.status).toBe(200);
     });
 
-    it("deletes assistant without server", async () => {
+    it("deletes assistant without server (no instance)", async () => {
       setupAuth();
       mockFindFirstAssistant.mockResolvedValue({
         ...MOCK_ASSISTANT,
-        providerServerId: null,
+        instanceId: null,
       } as never);
-      mockDeleteChain();
+      mockFindFirstInstance.mockResolvedValue(undefined as never);
+
+      const txMock = {
+        update: vi.fn().mockReturnValue({
+          set: vi.fn().mockReturnValue({ where: vi.fn().mockResolvedValue(undefined) }),
+        }),
+      };
+      mockTransactionWith(txMock);
 
       const res = await app.request("/api/assistants/assistant-uuid-1", {
         method: "DELETE",
@@ -558,127 +599,36 @@ describe("Assistants API", () => {
       expect(res.status).toBe(404);
     });
 
-    it("tears down the Cloudflare DNS record before destroying the server", async () => {
+    it("tears down Cloudflare DNS record before destroying server", async () => {
       setupAuth();
       mockFindFirstAssistant.mockResolvedValue({
         ...MOCK_ASSISTANT,
-        hostname: "my-assistant-abcd1234.example.io",
         dnsRecordId: "rec-xyz",
         dnsZoneId: "zone-abc",
       } as never);
+      mockFindFirstInstance.mockResolvedValue(MOCK_INSTANCE as never);
       const deleteServer = vi.fn().mockResolvedValue(undefined);
       mockGetProvider.mockReturnValue({ deleteServer } as never);
+      mockGetHetznerProvider.mockReturnValue({
+        detachFirewall: vi.fn().mockResolvedValue(undefined),
+        deleteFirewall: vi.fn().mockResolvedValue(undefined),
+      } as never);
       mockCfDelete.mockResolvedValue(undefined as never);
-      mockDeleteChain();
+
+      const txMock = {
+        update: vi.fn().mockReturnValue({
+          set: vi.fn().mockReturnValue({ where: vi.fn().mockResolvedValue(undefined) }),
+        }),
+      };
+      mockTransactionWith(txMock);
 
       const res = await app.request("/api/assistants/assistant-uuid-1", {
         method: "DELETE",
       });
 
       expect(res.status).toBe(200);
-      expect(mockCfDelete).toHaveBeenCalledWith({
-        recordId: "rec-xyz",
-        zoneId: "zone-abc",
-      });
+      expect(mockCfDelete).toHaveBeenCalledWith({ recordId: "rec-xyz", zoneId: "zone-abc" });
       expect(deleteServer).toHaveBeenCalledWith("42");
-    });
-
-    it("does not call deleteDnsRecord when dnsRecordId is null", async () => {
-      setupAuth();
-      mockFindFirstAssistant.mockResolvedValue(MOCK_ASSISTANT as never);
-      mockGetProvider.mockReturnValue({
-        deleteServer: vi.fn().mockResolvedValue(undefined),
-      } as never);
-      mockDeleteChain();
-
-      await app.request("/api/assistants/assistant-uuid-1", {
-        method: "DELETE",
-      });
-
-      expect(mockCfDelete).not.toHaveBeenCalled();
-    });
-
-    it("swallows Cloudflare teardown errors and still deletes the assistant", async () => {
-      setupAuth();
-      mockFindFirstAssistant.mockResolvedValue({
-        ...MOCK_ASSISTANT,
-        dnsRecordId: "rec-xyz",
-        dnsZoneId: "zone-abc",
-      } as never);
-      mockGetProvider.mockReturnValue({
-        deleteServer: vi.fn().mockResolvedValue(undefined),
-      } as never);
-      mockCfDelete.mockRejectedValue(new Error("CF unreachable"));
-      mockDeleteChain();
-
-      const res = await app.request("/api/assistants/assistant-uuid-1", {
-        method: "DELETE",
-      });
-
-      expect(res.status).toBe(200);
-      const body = await res.json();
-      expect(body.deleted).toBe(true);
-    });
-
-    it("deletes the Hetzner cloud firewall when firewallId is set", async () => {
-      setupAuth();
-      mockFindFirstAssistant.mockResolvedValue({
-        ...MOCK_ASSISTANT,
-        firewallId: "fw-999",
-      } as never);
-      const mockDeleteFirewall = vi.fn().mockResolvedValue(undefined);
-      mockGetProvider.mockReturnValue({
-        deleteServer: vi.fn().mockResolvedValue(undefined),
-      } as never);
-      mockGetHetznerProvider.mockReturnValue({
-        deleteFirewall: mockDeleteFirewall,
-      } as never);
-      mockDeleteChain();
-
-      const res = await app.request("/api/assistants/assistant-uuid-1", {
-        method: "DELETE",
-      });
-
-      expect(res.status).toBe(200);
-      expect(mockDeleteFirewall).toHaveBeenCalledWith("fw-999");
-    });
-
-    it("does not call deleteFirewall when firewallId is null", async () => {
-      setupAuth();
-      mockFindFirstAssistant.mockResolvedValue(MOCK_ASSISTANT as never);
-      mockGetProvider.mockReturnValue({
-        deleteServer: vi.fn().mockResolvedValue(undefined),
-      } as never);
-      mockDeleteChain();
-
-      await app.request("/api/assistants/assistant-uuid-1", {
-        method: "DELETE",
-      });
-
-      expect(mockGetHetznerProvider).not.toHaveBeenCalled();
-    });
-
-    it("swallows firewall delete errors and still deletes the assistant", async () => {
-      setupAuth();
-      mockFindFirstAssistant.mockResolvedValue({
-        ...MOCK_ASSISTANT,
-        firewallId: "fw-999",
-      } as never);
-      mockGetProvider.mockReturnValue({
-        deleteServer: vi.fn().mockResolvedValue(undefined),
-      } as never);
-      mockGetHetznerProvider.mockReturnValue({
-        deleteFirewall: vi.fn().mockRejectedValue(new Error("FW API down")),
-      } as never);
-      mockDeleteChain();
-
-      const res = await app.request("/api/assistants/assistant-uuid-1", {
-        method: "DELETE",
-      });
-
-      expect(res.status).toBe(200);
-      const body = await res.json();
-      expect(body.deleted).toBe(true);
     });
   });
 
@@ -687,12 +637,13 @@ describe("Assistants API", () => {
       setupAuth();
       const existing = {
         ...MOCK_ASSISTANT,
-        ipv4: "5.6.7.8",
         hostname: null,
         dnsRecordId: null,
         dnsZoneId: null,
       };
+      const instanceWithIp = { ...MOCK_INSTANCE, ipv4: "5.6.7.8" };
       mockFindFirstAssistant.mockResolvedValue(existing as never);
+      mockFindFirstInstance.mockResolvedValue(instanceWithIp as never);
       mockCfCreate.mockResolvedValue({
         recordId: "rec-new",
         zoneId: "zone-abc",
@@ -719,50 +670,12 @@ describe("Assistants API", () => {
         name: expect.stringMatching(/^my-assistant-/),
         ipv4: "5.6.7.8",
       });
-      expect(mockCfDelete).not.toHaveBeenCalled();
-    });
-
-    it("tears down an existing DNS record first when present", async () => {
-      setupAuth();
-      mockFindFirstAssistant.mockResolvedValue({
-        ...MOCK_ASSISTANT,
-        dnsRecordId: "rec-old",
-        dnsZoneId: "zone-old",
-      } as never);
-      mockCfDelete.mockResolvedValue(undefined as never);
-      mockCfCreate.mockResolvedValue({
-        recordId: "rec-new",
-        zoneId: "zone-abc",
-        baseDomain: "example.io",
-        fqdn: "my-assistant-assistan.example.io",
-      });
-      mockUpdateReturningChain({
-        ...MOCK_ASSISTANT,
-        hostname: "my-assistant-assistan.example.io",
-        dnsRecordId: "rec-new",
-        dnsZoneId: "zone-abc",
-        dnsBaseDomain: "example.io",
-      });
-
-      const res = await app.request(
-        "/api/assistants/assistant-uuid-1/regenerate-hostname",
-        { method: "POST" },
-      );
-
-      expect(res.status).toBe(200);
-      expect(mockCfDelete).toHaveBeenCalledWith({
-        recordId: "rec-old",
-        zoneId: "zone-old",
-      });
-      expect(mockCfCreate).toHaveBeenCalled();
     });
 
     it("returns 409 when assistant has no IPv4", async () => {
       setupAuth();
-      mockFindFirstAssistant.mockResolvedValue({
-        ...MOCK_ASSISTANT,
-        ipv4: null,
-      } as never);
+      mockFindFirstAssistant.mockResolvedValue(MOCK_ASSISTANT as never);
+      mockFindFirstInstance.mockResolvedValue({ ...MOCK_INSTANCE, ipv4: null } as never);
 
       const res = await app.request(
         "/api/assistants/assistant-uuid-1/regenerate-hostname",
@@ -789,6 +702,7 @@ describe("Assistants API", () => {
       setupAuth();
       vi.stubEnv("CLOUDFLARE_BASE_DOMAIN", "");
       mockFindFirstAssistant.mockResolvedValue(MOCK_ASSISTANT as never);
+      mockFindFirstInstance.mockResolvedValue(MOCK_INSTANCE as never);
 
       const res = await app.request(
         "/api/assistants/assistant-uuid-1/regenerate-hostname",

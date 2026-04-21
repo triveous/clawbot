@@ -7,16 +7,15 @@ export const assistantCredentials = pgTable("assistant_credentials", {
     .notNull()
     .unique()
     .references(() => assistants.id, { onDelete: "cascade" }),
-  // Root access credential. Type is "ssh" (Ed25519 OpenSSH private key) or
-  // "password" (plain text). Always "ssh" for newly provisioned assistants.
-  // Root key is registered with Hetzner and injected into /root/.ssh/authorized_keys.
-  // No openclaw user SSH key — root switches to openclaw via `su - openclaw`.
+  // Root access credential. Always "ssh" (Ed25519 OpenSSH private key) for
+  // newly provisioned assistants. Stored as envelope-encrypted ciphertext —
+  // see src/lib/crypto/envelope.ts.
   rootCredentialType: text("root_credential_type").notNull(),
   rootCredential: text("root_credential").notNull(),
+  // Envelope-encrypted ciphertext.
   gatewayToken: text("gateway_token").notNull(),
   // Randomized per assistant in prepareCredentials (range 20000–29999).
   gatewayPort: integer("gateway_port").notNull().default(18789),
-  tailscaleAuthKey: text("tailscale_auth_key"),
   createdAt: timestamp("created_at", { withTimezone: true })
     .notNull()
     .defaultNow(),
