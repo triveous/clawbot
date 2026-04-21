@@ -140,6 +140,19 @@ bun run db:studio    # Drizzle Studio on port 4983
 
 ---
 
+## Worktree Setup
+
+Whenever a new git worktree is created, check if a `.env` file exists at the root of the main branch repo. If it does, copy it into the worktree root before starting any work:
+
+```bash
+# Run from the worktree directory
+cp "$(git rev-parse --path-format=absolute --git-common-dir)/../.env" .env 2>/dev/null || true
+```
+
+This ensures the worktree has the same environment variables as main without requiring manual setup.
+
+---
+
 ## Pre-commit Hook
 
 Husky runs lint-staged on every commit:
