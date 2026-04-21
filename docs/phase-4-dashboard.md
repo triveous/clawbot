@@ -107,14 +107,9 @@ The Phase 1–4d infrastructure is solid. The dashboard UI was built as function
 
 ---
 
-## Out of Scope for Phase 4 (permanent deferrals)
+## Out of Scope for Phase 4
 
-These were explicitly cut to keep blast radius small:
-
-- **Stripe checkout / webhooks** — Phase 5 owns this
-- **In-place rebuild / plan upgrade / access-mode change** — delete + recreate; credit is released
-- **File editing** — read-only file tree if/when Files tab lands
-- **Volume creation / attach UX** — existing volumes shown; create/attach is stretch
+Deferred items from Phase 4 are tracked in [kanban/phase-7.md](../kanban/phase-7.md). Stripe checkout / webhooks are Phase 5.
 
 ---
 

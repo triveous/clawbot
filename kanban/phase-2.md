@@ -58,6 +58,6 @@ Status: **Complete**
 - [x] Unit tests for provider interface, snapshot logic, provisioning workflow, cloud-init template
 - [x] 80 tests passing (vitest)
 
-## Not in scope for Phase 2
+## Completed in later phases
 
-- [ ] Stripe subscription creation on provisioning — Phase 4
+- [x] Credit consumption on provisioning — landed in Phase 4 (`consumeCredit` in creation transaction)

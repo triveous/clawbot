@@ -81,14 +81,9 @@ Design system first, then all dashboard surfaces get rebuilt consistently.
 
 ---
 
-## Deferred (explicit non-goals for Phase 4)
+## Deferred
 
-- SSH exec features: logs, files, terminal, ssh-key rotate — pending control-plane egress story
-- In-place rebuild / plan-upgrade / access-mode change — delete + recreate (credit is released)
-- Stripe checkout / webhooks — Phase 5
-- Volume attach, Storage tab, Versions tab — post-MVP
-- Clerk organization webhooks for org name/slug sync — follow-up task
-- xterm.js terminal — Phase 4e stretch or Phase 5
+→ See [phase-7.md](./phase-7.md)
 
 ---
 
