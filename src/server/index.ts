@@ -10,6 +10,10 @@ import { assistantsRoute } from "./routes/assistants";
 import { channelsRoute } from "./routes/channels";
 import { billingRoute } from "./routes/billing";
 import { adminRoute } from "./routes/admin";
+import { organizationsRoute } from "./routes/organizations";
+import { plansRoute } from "./routes/plans";
+import { creditsRoute } from "./routes/credits";
+import { tailscaleRoute } from "./routes/tailscale";
 
 const app = new Hono().basePath("/api");
 
@@ -17,7 +21,7 @@ const app = new Hono().basePath("/api");
 app.use("*", requestLogger());
 app.use("*", cors());
 
-// Global error handler — logs all errors with request context
+// Global error handler
 app.onError((err, c) => {
   const log = c.get("logger") ?? getLogger("server");
   const status = err instanceof HTTPException ? err.status : 500;
@@ -42,7 +46,7 @@ app.onError((err, c) => {
   return c.json({ error: "Internal Server Error" }, 500);
 });
 
-// Public routes (no auth required)
+// Public routes
 app.get("/health", (c) => c.json({ status: "ok" }));
 app.route("/webhooks", webhooksRoute);
 
@@ -50,6 +54,12 @@ app.route("/webhooks", webhooksRoute);
 app.use("/assistants/*", clerkAuth());
 app.use("/channels/*", clerkAuth());
 app.use("/billing/*", clerkAuth());
+app.use("/orgs/*", clerkAuth());
+app.use("/credits/*", clerkAuth());
+app.use("/tailscale/*", clerkAuth());
+
+// Plans — Clerk auth required (plans are global, any authenticated user can read)
+app.use("/plans/*", clerkAuth());
 
 // Admin routes — API key auth
 app.use("/admin/*", adminAuth());
@@ -59,7 +69,11 @@ const appWithRoutes = app
   .route("/assistants", assistantsRoute)
   .route("/channels", channelsRoute)
   .route("/billing", billingRoute)
-  .route("/admin", adminRoute);
+  .route("/admin", adminRoute)
+  .route("/orgs", organizationsRoute)
+  .route("/plans", plansRoute)
+  .route("/credits", creditsRoute)
+  .route("/tailscale", tailscaleRoute);
 
 export type AppType = typeof appWithRoutes;
 export default appWithRoutes;

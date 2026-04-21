@@ -43,7 +43,6 @@ Nginx + TLS + UFW 80/443 + cloud-init hardening are **deferred to Phase 7**; onl
 - [x] Unit tests for slug helper
 - [x] Updated `assistants.test.ts`: POST stores `hostname` and calls workflow with 4 args; DELETE calls `deleteDnsRecord` only when set; regenerate endpoint (success, teardown-before-recreate, 409 no-ip, 404, 503 no-base-domain)
 
-## Deferred / post-MVP
+## Deferred
 
-- [ ] **Orphan DNS reconciliation job** — DELETE swallows Cloudflare teardown errors, so a failed CF delete leaves an orphan record. Add a periodic reconciliation task that lists records in the configured zone, matches them to assistant rows, and deletes anything unmatched.
-- [ ] **Nginx reverse proxy + Let's Encrypt + UFW 80/443 + cloud-init hardening** — moved to Phase 7. Phase 3 assistants have a hostname that resolves to the VPS IPv4 but nothing listening on 80/443 until then.
+→ See [phase-7.md](./phase-7.md)

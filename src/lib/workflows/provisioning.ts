@@ -1,7 +1,12 @@
 import crypto from "node:crypto";
 import { eq } from "drizzle-orm";
 import { db } from "@/lib/db";
-import { assistants, assistantCredentials } from "@/lib/db/schema";
+import {
+  assistants,
+  assistantCredentials,
+  instances,
+  instanceEvents,
+} from "@/lib/db/schema";
 import { getProvider, getHetznerProvider } from "@/lib/providers";
 import { createDnsRecord as cloudflareCreateDnsRecord } from "@/lib/providers/cloudflare";
 import type { FirewallRule } from "@/lib/providers/types";
@@ -9,23 +14,43 @@ import { buildCloudInit } from "./cloud-init";
 import type { AccessMode } from "./cloud-init";
 import { generateEd25519KeyPair } from "./ssh-keys";
 import { extractSubdomain } from "./slug";
+import { getPlan, getHetznerServerType } from "@/lib/plans/catalog";
+import { encrypt } from "@/lib/crypto/envelope";
 
 function log(step: string, msg: string) {
   console.log(`[provisioning:${step}] ${new Date().toISOString()} — ${msg}`);
 }
 
 function randomGatewayPort(): number {
-  // Range 20000–29999 — avoids well-known ports and the hardcoded legacy 18789.
   return 20000 + Math.floor(Math.random() * 10000);
 }
 
-async function prepareCredentials() {
+async function recordEvent(
+  instanceId: string,
+  step: string,
+  status: "started" | "ok" | "failed",
+  message?: string,
+  payload?: Record<string, unknown>,
+) {
+  try {
+    await db.insert(instanceEvents).values({
+      instanceId,
+      step,
+      status,
+      message: message ?? null,
+      payload: payload ?? null,
+    });
+  } catch {
+    // Non-fatal — never let event recording break provisioning
+  }
+}
+
+async function prepareCredentials(instanceId: string) {
   "use step";
 
   log("prepareCredentials", "Generating root SSH keypair and gateway token…");
+  await recordEvent(instanceId, "prepareCredentials", "started");
 
-  // Root SSH keypair — registered with Hetzner; injected into /root/.ssh/authorized_keys.
-  // Openclaw user has no SSH key — root switches via `su - openclaw`.
   const { opensshPrivate: rootPrivateKey, opensshPublic: rootPublicKey } =
     generateEd25519KeyPair("root@snapclaw");
 
@@ -33,21 +58,20 @@ async function prepareCredentials() {
   const gatewayPort = randomGatewayPort();
 
   log("prepareCredentials", `Credentials generated (gatewayPort=${gatewayPort})`);
-  return {
-    rootPrivateKey,
-    rootPublicKey,
-    gatewayToken,
+  await recordEvent(instanceId, "prepareCredentials", "ok", undefined, {
     gatewayPort,
-  };
+  });
+  return { rootPrivateKey, rootPublicKey, gatewayToken, gatewayPort };
 }
 
 async function createFirewall(
-  assistantId: string,
+  instanceId: string,
   accessMode: AccessMode,
   sshAllowedIps: string[],
 ): Promise<{ firewallId: string }> {
   "use step";
 
+  await recordEvent(instanceId, "createFirewall", "started");
   const hetzner = getHetznerProvider();
 
   let rules: FirewallRule[];
@@ -61,7 +85,6 @@ async function createFirewall(
       },
     ];
   } else {
-    // tailscale_serve: allow WireGuard only, block SSH entirely.
     rules = [
       {
         direction: "in",
@@ -72,22 +95,27 @@ async function createFirewall(
     ];
   }
 
-  const name = `openclaw-${assistantId.slice(0, 8)}`;
+  const name = `openclaw-${instanceId.slice(0, 8)}`;
   log("createFirewall", `Creating firewall "${name}" for accessMode=${accessMode}…`);
   const { firewallId } = await hetzner.createFirewall(name, rules);
   log("createFirewall", `Firewall created: id=${firewallId}`);
 
   await db
-    .update(assistants)
+    .update(instances)
     .set({ firewallId })
-    .where(eq(assistants.id, assistantId));
+    .where(eq(instances.id, instanceId));
 
+  await recordEvent(instanceId, "createFirewall", "ok", undefined, {
+    firewallId,
+  });
   return { firewallId };
 }
 
 async function createServer(
   assistantId: string,
+  instanceId: string,
   snapshotId: string,
+  planId: string,
   region: string,
   rootPublicKey: string,
   gatewayToken: string,
@@ -99,14 +127,19 @@ async function createServer(
 ) {
   "use step";
 
+  await recordEvent(instanceId, "createServer", "started");
   const hetzner = getHetznerProvider();
 
-  log("createServer", `Registering root SSH key for assistant ${assistantId.slice(0, 8)}…`);
+  // Resolve server type from plan's provider spec
+  const plan = await getPlan(planId);
+  if (!plan) throw new Error(`Plan ${planId} not found`);
+  const serverType = getHetznerServerType(plan);
+
+  log("createServer", `Registering root SSH key for instance ${instanceId.slice(0, 8)}…`);
   const { keyId: hetznerKeyId } = await hetzner.createSshKey(
-    `openclaw-root-${assistantId.slice(0, 8)}`,
+    `openclaw-root-${instanceId.slice(0, 8)}`,
     rootPublicKey,
   );
-  log("createServer", `SSH key registered: keyId=${hetznerKeyId}`);
 
   const cloudInit = buildCloudInit(
     rootPublicKey,
@@ -117,15 +150,15 @@ async function createServer(
     assistantSlug,
   );
 
-  log("createServer", `Creating server from snapshot ${snapshotId} in ${region}…`);
+  log("createServer", `Creating server (${serverType}) from snapshot ${snapshotId} in ${region}…`);
   let serverId: string;
   let ip: string;
   try {
     const result = await hetzner.createServer({
-      name: `openclaw-${assistantId.slice(0, 8)}`,
+      name: `openclaw-${instanceId.slice(0, 8)}`,
       image: snapshotId,
       region,
-      serverType: "cx33",
+      serverType,
       userData: cloudInit,
       sshKeys: [hetznerKeyId],
       firewalls: [firewallId],
@@ -136,28 +169,34 @@ async function createServer(
   } finally {
     try {
       await hetzner.deleteSshKey(hetznerKeyId);
-      log("createServer", "Root SSH key resource deleted");
     } catch {
       // Non-fatal
     }
   }
 
   await db
-    .update(assistants)
+    .update(instances)
     .set({
       status: "provisioning",
       providerServerId: serverId,
       providerSnapshotId: snapshotId,
+      ipv4: ip,
+      gatewayPort,
     })
-    .where(eq(assistants.id, assistantId));
+    .where(eq(instances.id, instanceId));
 
-  log("createServer", "Assistant status updated to provisioning");
+  await recordEvent(instanceId, "createServer", "ok", undefined, {
+    serverId,
+    ip,
+  });
+  log("createServer", "Instance status updated to provisioning");
   return { serverId, ip };
 }
 
-async function waitForReady(serverId: string) {
+async function waitForReady(instanceId: string, serverId: string) {
   "use step";
 
+  await recordEvent(instanceId, "waitForReady", "started");
   const provider = getProvider("hetzner");
   const maxAttempts = 60;
   const intervalMs = 5_000;
@@ -170,36 +209,37 @@ async function waitForReady(serverId: string) {
       log("waitForReady", "Server running — waiting 45s for cloud-init…");
       await new Promise((r) => setTimeout(r, 45_000));
       log("waitForReady", "Cloud-init wait complete");
+      await recordEvent(instanceId, "waitForReady", "ok");
       return;
     }
     await new Promise((r) => setTimeout(r, intervalMs));
   }
 
-  throw new Error(
-    `Server ${serverId} did not become ready after ${maxAttempts} attempts`,
-  );
+  const msg = `Server ${serverId} did not become ready after ${maxAttempts} attempts`;
+  await recordEvent(instanceId, "waitForReady", "failed", msg);
+  throw new Error(msg);
 }
 
-async function createDnsRecord(assistantId: string, ip: string) {
+async function createDnsRecord(assistantId: string, instanceId: string, ip: string) {
   "use step";
 
+  await recordEvent(instanceId, "createDnsRecord", "started");
   log("createDnsRecord", `Resolving DNS for assistant ${assistantId.slice(0, 8)}…`);
 
   const assistant = await db.query.assistants.findFirst({
     where: eq(assistants.id, assistantId),
   });
-  if (!assistant) {
-    throw new Error(`Assistant ${assistantId} not found`);
-  }
+  if (!assistant) throw new Error(`Assistant ${assistantId} not found`);
 
   if (assistant.dnsRecordId) {
     log("createDnsRecord", `Record already exists (${assistant.dnsRecordId}); skipping`);
+    await recordEvent(instanceId, "createDnsRecord", "ok", "already exists");
     return;
   }
 
   if (!assistant.hostname || !assistant.dnsBaseDomain) {
     throw new Error(
-      `Assistant ${assistantId} is missing hostname/dnsBaseDomain — cannot create DNS record`,
+      `Assistant ${assistantId} is missing hostname/dnsBaseDomain`,
     );
   }
 
@@ -220,64 +260,85 @@ async function createDnsRecord(assistantId: string, ip: string) {
     .update(assistants)
     .set({ dnsRecordId: recordId, dnsZoneId: zoneId })
     .where(eq(assistants.id, assistantId));
+
+  await recordEvent(instanceId, "createDnsRecord", "ok", undefined, {
+    fqdn,
+    recordId,
+  });
 }
 
 async function finalize(
   assistantId: string,
+  instanceId: string,
   ip: string,
   rootPrivateKey: string,
   gatewayToken: string,
   gatewayPort: number,
-  tailscaleAuthKey: string | undefined,
 ) {
   "use step";
 
-  log("finalize", `Storing credentials and marking assistant ${assistantId.slice(0, 8)} as running…`);
+  await recordEvent(instanceId, "finalize", "started");
+  log("finalize", `Storing credentials and marking assistant ${assistantId.slice(0, 8)} as active…`);
+
   await db.insert(assistantCredentials).values({
     assistantId,
     rootCredentialType: "ssh",
-    rootCredential: rootPrivateKey,
-    gatewayToken,
+    rootCredential: encrypt(rootPrivateKey),
+    gatewayToken: encrypt(gatewayToken),
     gatewayPort,
-    tailscaleAuthKey: tailscaleAuthKey ?? null,
   });
 
   await db
-    .update(assistants)
+    .update(instances)
     .set({ status: "running", ipv4: ip, gatewayPort })
-    .where(eq(assistants.id, assistantId));
+    .where(eq(instances.id, instanceId));
 
-  log("finalize", `Assistant is running at ${ip}`);
-}
-
-async function markError(assistantId: string) {
-  "use step";
-
-  log("markError", `Marking assistant ${assistantId.slice(0, 8)} as error`);
   await db
     .update(assistants)
-    .set({ status: "error" })
+    .set({ status: "active", instanceId })
+    .where(eq(assistants.id, assistantId));
+
+  await recordEvent(instanceId, "finalize", "ok");
+  log("finalize", `Assistant is active at ${ip}`);
+}
+
+async function markError(assistantId: string, instanceId: string, error: unknown) {
+  "use step";
+
+  const msg = String(error);
+  log("markError", `Marking assistant ${assistantId.slice(0, 8)} as error: ${msg}`);
+
+  await db
+    .update(instances)
+    .set({ status: "error", lastError: msg })
+    .where(eq(instances.id, instanceId));
+
+  await db
+    .update(assistants)
+    .set({ status: "error", lastErrorAt: new Date() })
     .where(eq(assistants.id, assistantId));
 }
 
-async function cleanupFirewall(assistantId: string) {
+async function cleanupFirewall(instanceId: string) {
   "use step";
 
-  const assistant = await db.query.assistants.findFirst({
-    where: eq(assistants.id, assistantId),
+  const instance = await db.query.instances.findFirst({
+    where: eq(instances.id, instanceId),
   });
-  if (!assistant?.firewallId) return;
+  if (!instance?.firewallId) return;
 
-  log("cleanupFirewall", `Best-effort delete of firewall ${assistant.firewallId}`);
+  log("cleanupFirewall", `Best-effort delete of firewall ${instance.firewallId}`);
   const hetzner = getHetznerProvider();
-  await hetzner.deleteFirewall(assistant.firewallId).catch((err) => {
+  await hetzner.deleteFirewall(instance.firewallId).catch((err) => {
     log("cleanupFirewall", `Firewall delete failed: ${String(err)}`);
   });
 }
 
 export async function provisionAssistant(
   assistantId: string,
+  instanceId: string,
   snapshotId: string,
+  planId: string,
   region: string,
   hostname: string,
   accessMode: AccessMode = "ssh",
@@ -288,7 +349,7 @@ export async function provisionAssistant(
 
   log(
     "workflow",
-    `Starting provisionAssistant assistantId=${assistantId} snapshotId=${snapshotId} region=${region} hostname=${hostname} accessMode=${accessMode}`,
+    `Starting provisionAssistant assistantId=${assistantId} instanceId=${instanceId} planId=${planId} region=${region} accessMode=${accessMode}`,
   );
 
   const resolvedSshAllowedIps =
@@ -296,21 +357,22 @@ export async function provisionAssistant(
       ? ["0.0.0.0/0", "::/0"]
       : sshAllowedIps.split(",").map((s) => s.trim());
 
-  // Extract slug from hostname (everything before the first dot)
   const assistantSlug = hostname.split(".")[0];
 
   try {
-    const credentials = await prepareCredentials();
+    const credentials = await prepareCredentials(instanceId);
 
     const { firewallId } = await createFirewall(
-      assistantId,
+      instanceId,
       accessMode,
       resolvedSshAllowedIps,
     );
 
     const server = await createServer(
       assistantId,
+      instanceId,
       snapshotId,
+      planId,
       region,
       credentials.rootPublicKey,
       credentials.gatewayToken,
@@ -321,25 +383,23 @@ export async function provisionAssistant(
       assistantSlug,
     );
 
-    await waitForReady(server.serverId);
-
-    await createDnsRecord(assistantId, server.ip);
-
+    await waitForReady(instanceId, server.serverId);
+    await createDnsRecord(assistantId, instanceId, server.ip);
     await finalize(
       assistantId,
+      instanceId,
       server.ip,
       credentials.rootPrivateKey,
       credentials.gatewayToken,
       credentials.gatewayPort,
-      tailscaleAuthKey,
     );
 
     log("workflow", `provisionAssistant complete — serverId=${server.serverId} ip=${server.ip}`);
     return { serverId: server.serverId, ip: server.ip };
   } catch (error) {
     log("workflow", `provisionAssistant FAILED: ${String(error)}`);
-    await markError(assistantId);
-    await cleanupFirewall(assistantId);
+    await markError(assistantId, instanceId, error);
+    await cleanupFirewall(instanceId);
     throw error;
   }
 }

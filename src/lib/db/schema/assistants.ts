@@ -1,5 +1,4 @@
 import {
-  integer,
   pgEnum,
   pgTable,
   text,
@@ -7,13 +6,14 @@ import {
   uuid,
 } from "drizzle-orm/pg-core";
 import { users } from "./users";
+import { organizations } from "./organizations";
+import { plans } from "./plans";
 
 export const assistantStatusEnum = pgEnum("assistant_status", [
   "creating",
-  "provisioning",
-  "running",
-  "stopped",
+  "active",
   "error",
+  "stopped",
 ]);
 
 export const providerEnum = pgEnum("provider", ["hetzner"]);
@@ -25,25 +25,32 @@ export const accessModeEnum = pgEnum("access_mode", [
 
 export const assistants = pgTable("assistants", {
   id: uuid("id").primaryKey().defaultRandom(),
-  userId: uuid("user_id")
+  orgId: text("org_id")
     .notNull()
-    .references(() => users.id, { onDelete: "cascade" }),
+    .references(() => organizations.id, { onDelete: "cascade" }),
+  createdByUserId: uuid("created_by_user_id").references(() => users.id, {
+    onDelete: "set null",
+  }),
+  planId: uuid("plan_id")
+    .notNull()
+    .references(() => plans.id),
+  // FK to instances.id is added via raw SQL in a follow-up migration to avoid
+  // the drizzle-kit circular import headache. The column type and semantics
+  // match instances.id (uuid). We enforce the relationship at the
+  // application layer until the migration lands.
+  instanceId: uuid("instance_id"),
   name: text("name").notNull(),
   status: assistantStatusEnum("status").notNull().default("creating"),
   provider: providerEnum("provider").notNull().default("hetzner"),
-  providerServerId: text("provider_server_id"),
-  providerSnapshotId: text("provider_snapshot_id"),
-  ipv4: text("ipv4"),
   hostname: text("hostname"),
   dnsRecordId: text("dns_record_id"),
   dnsZoneId: text("dns_zone_id"),
   dnsBaseDomain: text("dns_base_domain"),
   accessMode: accessModeEnum("access_mode").notNull().default("ssh"),
   sshAllowedIps: text("ssh_allowed_ips"),
-  firewallId: text("firewall_id"),
-  // Persisted from credentials at finalize time so toAssistantResponse needs no join.
-  gatewayPort: integer("gateway_port"),
   region: text("region").notNull().default("fsn1"),
+  lastErrorAt: timestamp("last_error_at", { withTimezone: true }),
+  deletedAt: timestamp("deleted_at", { withTimezone: true }),
   createdAt: timestamp("created_at", { withTimezone: true })
     .notNull()
     .defaultNow(),

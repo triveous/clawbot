@@ -119,12 +119,12 @@ https://<slug>.<tailnet>.ts.net/
 
 A new snapshot must be built before `tailscale set --operator=openclaw` takes effect. Until then, `tailscale serve --bg` runs as root in cloud-init (works correctly; operator rights only matter if openclaw user runs it directly).
 
-## Deferred / Post-MVP
+## Completed in Phase 4
 
-- [ ] **Tailscale device cleanup** — deleting an assistant does not remove the device from the tailnet. Requires Tailscale API call + storing the device ID at provision time
-- [ ] **Firewall orphan reconciliation** — DELETE swallows Hetzner firewall errors; add periodic cleanup job (same pattern as DNS orphan job from Phase 3)
-- [ ] **Mode switching** — set at creation only; re-provisioning required to change mode
-- [ ] **Dashboard: surface root private key** — operator needs to download/copy the root private key from `rootCredential` to use SSH access; not yet exposed in the UI
-- [ ] **Dashboard: surface SSH tunnel command** — generate the exact `ssh -L` command with the correct port for copy-paste
-- [ ] **SSH allowed IPs update** — firewall rules are fixed at creation; no API to update `sshAllowedIps` post-provision without re-provisioning
-- [ ] **Tailscale Serve mode: `tailscale serve --bg` in openclaw user block** — currently runs as root because the existing snapshot lacks operator rights. Once a new snapshot is built with `tailscale set --operator=openclaw` baked in, move this command to the openclaw user block for correctness
+- [x] Dashboard: SSH key download (`.pem`) from assistant detail page
+- [x] Dashboard: SSH tunnel command with exact port/IP/filename — Connect to Gateway card
+- [x] SSH allowed IPs update — `PATCH /:id/firewall` endpoint + UI editor
+
+## Deferred
+
+→ See [phase-7.md](./phase-7.md)
