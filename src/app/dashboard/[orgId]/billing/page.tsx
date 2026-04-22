@@ -92,6 +92,7 @@ type Credit = {
   source: string;
   currentPeriodEnd: string | null;
   consumedByAssistantId: string | null;
+  subscriptionId: string | null;
 };
 
 type Assistant = {
@@ -212,6 +213,19 @@ export default function BillingPage({
     () => new Map(assistants.map((a) => [a.id, a])),
     [assistants],
   );
+  const subById = useMemo(() => new Map(subs.map((s) => [s.id, s])), [subs]);
+
+  // Sort credits by status priority (past-due first, then active, then other)
+  // so trouble surfaces at the top of the unified table.
+  const sortedCredits = useMemo(() => {
+    const weight = (status: string): number => {
+      if (status === "past_due" || status === "unpaid") return 0;
+      if (status === "active" || status === "trialing") return 1;
+      if (status === "incomplete") return 2;
+      return 3;
+    };
+    return [...credits].sort((a, b) => weight(a.status) - weight(b.status));
+  }, [credits]);
 
   const monthlyTotal = activeSubs.reduce((sum, s) => sum + s.priceCents, 0);
   const nextChargeDate = activeSubs
@@ -396,10 +410,13 @@ export default function BillingPage({
         </div>
       </div>
 
-      {/* Credits — slots in your pool. One slot == one live assistant. */}
+      {/* Merged Credits ↔ Subscriptions table. Each row is a credit — a
+          pre-paid slot for one assistant. Credits backed by a Stripe
+          subscription also expose the subscription-level actions (change
+          plan, cancel, manage in Stripe) inline on the same row. */}
       <SectionCard
         title="Credits"
-        sub="Each credit is a pre-paid slot for one assistant"
+        sub="Each credit is a pre-paid slot for one assistant. Manage subscription actions inline."
         pad={false}
         actions={
           <Link
@@ -411,16 +428,15 @@ export default function BillingPage({
           </Link>
         }
       >
-        {credits.length === 0 ? (
+        {sortedCredits.length === 0 ? (
           <div
             style={{
-              padding: "36px 24px",
+              padding: "40px 24px",
               textAlign: "center",
               color: "var(--muted-foreground)",
-              fontSize: 13,
             }}
           >
-            No credits yet. Buy one to deploy your first assistant.
+            <div style={{ fontSize: 13 }}>No credits yet.</div>
             <div style={{ marginTop: 12 }}>
               <Link
                 href={`/dashboard/${orgId}/pricing`}
@@ -435,34 +451,128 @@ export default function BillingPage({
           <table className="table">
             <thead>
               <tr>
-                <th>Credit</th>
                 <th>Plan</th>
                 <th>Status</th>
                 <th>Attached to</th>
                 <th>Renews</th>
                 <th>Source</th>
-                <th />
+                <th style={{ textAlign: "right" }}>Actions</th>
               </tr>
             </thead>
             <tbody>
-              {credits.map((c) => {
+              {sortedCredits.map((c) => {
                 const plan = planById.get(c.planId);
+                const sub = c.subscriptionId ? subById.get(c.subscriptionId) : null;
                 const attached = c.consumedByAssistantId
                   ? assistantById.get(c.consumedByAssistantId)
                   : null;
+
+                // Primary action varies by state; overflow menu always surfaces
+                // the full set for completeness.
+                const primary = (() => {
+                  if (c.status === "past_due" || c.status === "unpaid") {
+                    return (
+                      <button
+                        type="button"
+                        className="btn btn--primary btn--sm"
+                        onClick={openPortal}
+                        disabled={busy === "portal"}
+                      >
+                        <Icon name="creditCard" size={12} />
+                        Pay now
+                      </button>
+                    );
+                  }
+                  if (attached) {
+                    return (
+                      <Link
+                        href={`/dashboard/${orgId}/assistant/${attached.id}`}
+                        className="btn btn--ghost btn--sm"
+                      >
+                        <Icon name="bot" size={12} />
+                        Open
+                      </Link>
+                    );
+                  }
+                  if (
+                    (c.status === "active" || c.status === "trialing") &&
+                    !c.consumedByAssistantId
+                  ) {
+                    return (
+                      <Link
+                        href={`/dashboard/${orgId}`}
+                        className="btn btn--primary btn--sm"
+                      >
+                        <Icon name="zap" size={12} />
+                        Attach
+                      </Link>
+                    );
+                  }
+                  return null;
+                })();
+
+                const menuItems: RowMenuItem[] = [];
+
+                if (sub) {
+                  menuItems.push({
+                    label: changingPlanFor === sub.id ? "Close switch plan" : "Change plan",
+                    icon: "tag",
+                    onClick: () =>
+                      setChangingPlanFor(
+                        changingPlanFor === sub.id ? null : sub.id,
+                      ),
+                  });
+                  menuItems.push({
+                    label: "Manage in Stripe",
+                    icon: "link",
+                    onClick: openPortal,
+                  });
+                  if (!sub.cancelAtPeriodEnd && sub.status !== "canceled") {
+                    menuItems.push({ divider: true });
+                    menuItems.push({
+                      label: "Cancel subscription",
+                      icon: "trash",
+                      destructive: true,
+                      onClick: () => setConfirmCancel(sub.id),
+                    });
+                  }
+                } else if (attached) {
+                  menuItems.push({
+                    label: "Open assistant",
+                    icon: "bot",
+                    onClick: () => {
+                      window.location.href = `/dashboard/${orgId}/assistant/${attached.id}`;
+                    },
+                  });
+                }
+
                 return (
                   <tr key={c.id}>
-                    <td className="mono dim">{c.id.slice(0, 10)}</td>
                     <td>
-                      {plan?.displayName ?? "—"}
-                      {plan ? (
-                        <span className="faint" style={{ marginLeft: 6 }}>
-                          {formatMoney(plan.priceCents, plan.currency)}
+                      <div style={{ display: "flex", flexDirection: "column", gap: 2 }}>
+                        <span style={{ fontWeight: 500 }}>{plan?.displayName ?? "—"}</span>
+                        <span className="mono faint" style={{ fontSize: 11 }}>
+                          {plan ? `${formatMoney(plan.priceCents, plan.currency)}/mo` : c.id.slice(0, 10)}
                         </span>
-                      ) : null}
+                      </div>
                     </td>
                     <td>
-                      <StatusPill status={c.status} />
+                      <div
+                        style={{
+                          display: "flex",
+                          gap: 6,
+                          alignItems: "center",
+                          flexWrap: "wrap",
+                        }}
+                      >
+                        <StatusPill status={c.status} />
+                        {sub?.stripeScheduleId ? (
+                          <span className="pill pill--info">downgrade pending</span>
+                        ) : null}
+                        {sub?.cancelAtPeriodEnd ? (
+                          <span className="pill pill--warn">cancel scheduled</span>
+                        ) : null}
+                      </div>
                     </td>
                     <td>
                       {attached ? (
@@ -491,7 +601,7 @@ export default function BillingPage({
                     </td>
                     <td className="dim" style={{ fontSize: 12 }}>
                       {c.source === "stripe" ? (
-                        "Stripe subscription"
+                        "Stripe"
                       ) : c.source === "granted" ? (
                         <span className="pill pill--info">Granted</span>
                       ) : (
@@ -499,150 +609,16 @@ export default function BillingPage({
                       )}
                     </td>
                     <td style={{ textAlign: "right" }}>
-                      {!c.consumedByAssistantId && c.status === "active" ? (
-                        <Link
-                          href={`/dashboard/${orgId}`}
-                          className="btn btn--ghost btn--sm"
-                        >
-                          <Icon name="zap" size={12} />
-                          Attach
-                        </Link>
-                      ) : null}
-                    </td>
-                  </tr>
-                );
-              })}
-            </tbody>
-          </table>
-        )}
-      </SectionCard>
-
-      <div style={{ height: 20 }} />
-
-      {/* Subscriptions table */}
-      <SectionCard
-        title="Subscriptions"
-        sub="Each subscription backs one live assistant"
-        pad={false}
-        actions={
-          <Link
-            href={`/dashboard/${orgId}/pricing`}
-            className="btn btn--ghost btn--sm"
-          >
-            <Icon name="plus" size={12} />
-            Buy credit
-          </Link>
-        }
-      >
-        {subs.length === 0 ? (
-          <div
-            style={{
-              padding: "40px 24px",
-              textAlign: "center",
-              color: "var(--muted-foreground)",
-            }}
-          >
-            <div style={{ fontSize: 13 }}>No subscriptions yet.</div>
-            <div style={{ marginTop: 12 }}>
-              <Link
-                href={`/dashboard/${orgId}/pricing`}
-                className="btn btn--primary btn--sm"
-              >
-                <Icon name="tag" size={12} />
-                See pricing
-              </Link>
-            </div>
-          </div>
-        ) : (
-          <table className="table">
-            <thead>
-              <tr>
-                <th>Plan</th>
-                <th>Status</th>
-                <th>Price</th>
-                <th>Renews / cancels</th>
-                <th>Created</th>
-                <th />
-              </tr>
-            </thead>
-            <tbody>
-              {subs.map((s) => {
-                const menuItems: RowMenuItem[] = [
-                  ...plans
-                    .filter((p) => p.id !== s.planId)
-                    .map<RowMenuItem>((p) => ({
-                      label: `Switch to ${p.displayName}`,
-                      icon: "tag",
-                      onClick: () =>
-                        changePlan(
-                          s.id,
-                          p.id,
-                          p.priceCents > s.priceCents ? "upgrade" : "downgrade",
-                        ),
-                    })),
-                  { divider: true },
-                  {
-                    label: "Manage in Stripe",
-                    icon: "link",
-                    onClick: openPortal,
-                  },
-                  ...(!s.cancelAtPeriodEnd && s.status !== "canceled"
-                    ? [
-                        {
-                          label: "Cancel subscription",
-                          icon: "trash" as const,
-                          destructive: true,
-                          onClick: () => setConfirmCancel(s.id),
-                        } satisfies RowMenuItem,
-                      ]
-                    : []),
-                ];
-
-                return (
-                  <tr key={s.id}>
-                    <td>
-                      <div style={{ display: "flex", flexDirection: "column", gap: 2 }}>
-                        <span style={{ fontWeight: 500 }}>{s.planDisplayName}</span>
-                        <span className="mono faint" style={{ fontSize: 11 }}>
-                          {s.stripeSubscriptionId.slice(0, 18)}…
-                        </span>
-                      </div>
-                    </td>
-                    <td>
-                      <div style={{ display: "flex", gap: 6, alignItems: "center", flexWrap: "wrap" }}>
-                        <StatusPill status={s.status} />
-                        {s.stripeScheduleId ? (
-                          <span className="pill pill--info">downgrade pending</span>
-                        ) : null}
-                        {s.cancelAtPeriodEnd ? (
-                          <span className="pill pill--warn">cancel scheduled</span>
-                        ) : null}
-                      </div>
-                    </td>
-                    <td className="mono">
-                      {formatMoney(s.priceCents, s.currency)}
-                      <span className="faint">/mo</span>
-                    </td>
-                    <td className="dim mono">
-                      {s.currentPeriodEnd ? formatDate(s.currentPeriodEnd) : "—"}
-                    </td>
-                    <td className="dim" style={{ fontSize: 12 }}>
-                      {formatDate(s.createdAt)}
-                    </td>
-                    <td style={{ textAlign: "right" }}>
-                      <div style={{ display: "flex", gap: 6, justifyContent: "flex-end" }}>
-                        <button
-                          type="button"
-                          className="btn btn--ghost btn--sm"
-                          onClick={() =>
-                            setChangingPlanFor(changingPlanFor === s.id ? null : s.id)
-                          }
-                          disabled={!!busy}
-                        >
-                          <Icon name="tag" size={12} />
-                          {changingPlanFor === s.id ? "Close" : "Change plan"}
-                        </button>
-                        <RowMenu items={menuItems} />
+                      <div
+                        style={{
+                          display: "flex",
+                          gap: 6,
+                          justifyContent: "flex-end",
+                          alignItems: "center",
+                        }}
+                      >
+                        {primary}
+                        {menuItems.length > 0 ? <RowMenu items={menuItems} /> : null}
                       </div>
                     </td>
                   </tr>
@@ -651,6 +627,7 @@ export default function BillingPage({
             </tbody>
           </table>
         )}
+
         {changingPlanFor ? (
           <div
             style={{
@@ -671,11 +648,12 @@ export default function BillingPage({
             >
               {plans
                 .filter((p) => {
-                  const sub = subs.find((ss) => ss.id === changingPlanFor);
+                  const sub = subById.get(changingPlanFor);
                   return sub && p.id !== sub.planId;
                 })
                 .map((p) => {
-                  const sub = subs.find((ss) => ss.id === changingPlanFor)!;
+                  const sub = subById.get(changingPlanFor);
+                  if (!sub) return null;
                   const isUpgrade = p.priceCents > sub.priceCents;
                   return (
                     <div
@@ -692,7 +670,9 @@ export default function BillingPage({
                       }}
                     >
                       <div>
-                        <div style={{ fontSize: 13, fontWeight: 500 }}>{p.displayName}</div>
+                        <div style={{ fontSize: 13, fontWeight: 500 }}>
+                          {p.displayName}
+                        </div>
                         <div className="faint" style={{ fontSize: 11 }}>
                           {formatMoney(p.priceCents, p.currency)}/mo ·{" "}
                           {isUpgrade ? "upgrade now" : "downgrade next period"}
@@ -702,7 +682,11 @@ export default function BillingPage({
                         type="button"
                         className="btn btn--ghost btn--sm"
                         onClick={() =>
-                          changePlan(sub.id, p.id, isUpgrade ? "upgrade" : "downgrade")
+                          changePlan(
+                            sub.id,
+                            p.id,
+                            isUpgrade ? "upgrade" : "downgrade",
+                          )
                         }
                         disabled={busy === sub.id}
                       >
