@@ -124,10 +124,11 @@ Built from the Claude Design handoff bundle (`clawbot-handoff`) — all surfaces
 - [x] `tabs/stub-tabs.tsx` — Terminal / Logs / Files / Versions shells with the design&rsquo;s "coming soon" treatment (kept per handoff instruction: don&rsquo;t remove the UI component even if the feature isn&rsquo;t wired yet)
 - [x] `sidebar-facts.tsx` — shared plan/region/provider card + gateway-token card used by Overview
 
-### Billing + Pricing 🔜 Stage 3
+### Billing + Pricing ✅ Stage 3
 
-- [ ] `/dashboard/[orgId]/billing` — summary (MRR, active subscriptions, next invoice), subscriptions table driven by `GET /api/billing/subscriptions`, invoices table driven by `GET /api/billing/invoices`, payment method section with Stripe Customer Portal link
-- [ ] `/dashboard/[orgId]/pricing` — plan cards (Starter/Growth/Pro/Business) with benefits bullets, resource limits, price; "Buy plan" wired to checkout
+- [x] `/dashboard/[orgId]/billing/page.tsx` — page head with portal + buy-subscription CTAs; past-due callout; 4-up stat strip (monthly total, subscription count with in-use/available split, next charge date, lifetime paid); subscriptions table with status pills, plan switcher drawer, row menu wired to `POST /api/billing/subscriptions/:id/change-plan` and `cancel`; invoices table wired to `GET /api/billing/invoices` with hosted URL + PDF links; payment-methods + billing-details cards that defer to the Stripe portal (`POST /api/billing/portal`); typed-name-free cancel confirm modal
+- [x] `/dashboard/[orgId]/pricing/page.tsx` — plan cards driven by `GET /api/plans` sorted by tier; Hetzner server-type/spec line from providerSpec; benefits bullets from plan.benefits with an auto-added "you already have N credits" line from `GET /api/credits`; popular ribbon and select-then-subscribe interaction; `Subscribe` routes to Stripe via `POST /api/billing/checkout`; "plan not Stripe-configured" fallback; How-it-works + FAQ side cards
+- [x] `SubscribeButton.tsx` deleted (logic inlined into the new pricing page)
 
 ### Members + Settings + Onboarding + Admin + Docs + Notifications 🔜 Stage 4
 

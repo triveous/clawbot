@@ -1,10 +1,17 @@
 "use client";
 
-import { useState, useEffect, useCallback } from "react";
+import { use, useCallback, useEffect, useMemo, useState } from "react";
+import Link from "next/link";
 import { useRpc } from "@/hooks/use-rpc";
-import { Badge } from "@/components/ui/badge";
-import { Button } from "@/components/ui/button";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import {
+  SectionCard,
+  Icon,
+  StatusPill,
+  Callout,
+  RowMenu,
+  type RowMenuItem,
+} from "@/components/dashboard";
+import { formatDate, formatPrice } from "@/lib/dashboard/format";
 
 type Subscription = {
   id: string;
@@ -42,24 +49,8 @@ type Plan = {
   slug: string;
   displayName: string;
   priceCents: number;
+  currency: string;
   tier: number;
-};
-
-const STATUS_VARIANT: Record<
-  string,
-  "default" | "secondary" | "destructive" | "outline"
-> = {
-  active: "default",
-  trialing: "secondary",
-  incomplete: "outline",
-  past_due: "destructive",
-  unpaid: "destructive",
-  canceled: "outline",
-  paid: "default",
-  open: "secondary",
-  void: "outline",
-  uncollectible: "destructive",
-  draft: "outline",
 };
 
 function formatMoney(cents: number, currency: string) {
@@ -70,8 +61,14 @@ function formatMoney(cents: number, currency: string) {
   }).format(cents / 100);
 }
 
-export default function BillingPage() {
+export default function BillingPage({
+  params,
+}: {
+  params: Promise<{ orgId: string }>;
+}) {
+  const { orgId } = use(params);
   const rpc = useRpc();
+
   const [subs, setSubs] = useState<Subscription[]>([]);
   const [invoices, setInvoices] = useState<Invoice[]>([]);
   const [plans, setPlans] = useState<Plan[]>([]);
@@ -79,6 +76,7 @@ export default function BillingPage() {
   const [error, setError] = useState("");
   const [busy, setBusy] = useState<string | null>(null);
   const [changingPlanFor, setChangingPlanFor] = useState<string | null>(null);
+  const [confirmCancel, setConfirmCancel] = useState<string | null>(null);
 
   const load = useCallback(async () => {
     setError("");
@@ -108,8 +106,29 @@ export default function BillingPage() {
   }, [rpc]);
 
   useEffect(() => {
-    load();
+    void load();
   }, [load]);
+
+  const activeSubs = useMemo(
+    () => subs.filter((s) => s.status === "active" || s.status === "trialing"),
+    [subs],
+  );
+
+  const pastDue = useMemo(
+    () => subs.filter((s) => s.status === "past_due" || s.status === "unpaid"),
+    [subs],
+  );
+
+  const monthlyTotal = activeSubs.reduce((sum, s) => sum + s.priceCents, 0);
+  const nextChargeDate = activeSubs
+    .map((s) => s.currentPeriodEnd)
+    .filter((d): d is string => !!d)
+    .sort()
+    .shift();
+  const lifetimeCents = invoices
+    .filter((i) => i.status === "paid")
+    .reduce((sum, i) => sum + i.amountPaid, 0);
+  const defaultCurrency = activeSubs[0]?.currency ?? invoices[0]?.currency ?? "USD";
 
   async function openPortal() {
     setBusy("portal");
@@ -127,14 +146,17 @@ export default function BillingPage() {
   }
 
   async function cancelSub(subId: string) {
-    if (!confirm("Cancel at the end of the current period?")) return;
     setBusy(subId);
     try {
       const res = await rpc.api.billing.subscriptions[":id"].cancel.$post({
         param: { id: subId },
       });
-      if (res.ok) await load();
-      else setError("Cancel failed");
+      if (res.ok) {
+        setConfirmCancel(null);
+        await load();
+      } else {
+        setError("Cancel failed");
+      }
     } finally {
       setBusy(null);
     }
@@ -147,14 +169,11 @@ export default function BillingPage() {
   ) {
     setBusy(subId);
     try {
-      const res = await fetch(
-        `/api/billing/subscriptions/${subId}/change-plan`,
-        {
-          method: "POST",
-          headers: { "content-type": "application/json" },
-          body: JSON.stringify({ newPlanId, mode }),
-        },
-      );
+      const res = await fetch(`/api/billing/subscriptions/${subId}/change-plan`, {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ newPlanId, mode }),
+      });
       if (res.ok) {
         setChangingPlanFor(null);
         await load();
@@ -166,198 +185,471 @@ export default function BillingPage() {
     }
   }
 
+  if (loading) {
+    return (
+      <div className="page__loading">
+        <Icon name="creditCard" size={20} />
+        Loading billing…
+      </div>
+    );
+  }
+
   return (
-    <div className="space-y-8">
-      <div className="flex items-start justify-between">
+    <div>
+      <div className="page__head">
         <div>
-          <h1 className="text-2xl font-bold">Billing</h1>
-          <p className="mt-1 text-sm text-muted-foreground">
-            Subscriptions, invoices, and payment method.
-          </p>
+          <h1 className="page__title">
+            Billing{" "}
+            <span className="accent" style={{ fontFamily: "var(--font-instrument-serif)" }}>
+              &amp; subscriptions
+            </span>
+          </h1>
+          <div className="page__sub">
+            One subscription → one live assistant. Pay monthly, cancel anytime.
+          </div>
         </div>
-        <Button onClick={openPortal} disabled={busy === "portal"} variant="outline">
-          {busy === "portal" ? "Opening…" : "Manage payment method"}
-        </Button>
+        <div className="page__actions">
+          <button
+            type="button"
+            className="btn btn--ghost"
+            onClick={openPortal}
+            disabled={busy === "portal"}
+          >
+            <Icon name="creditCard" size={14} />
+            {busy === "portal" ? "Opening…" : "Manage payment"}
+          </button>
+          <Link href={`/dashboard/${orgId}/pricing`} className="btn btn--primary">
+            <Icon name="plus" size={14} />
+            Buy subscription
+          </Link>
+        </div>
       </div>
 
-      {error && <p className="text-sm text-destructive">{error}</p>}
+      {error ? (
+        <div style={{ marginBottom: 16 }}>
+          <Callout kind="danger" icon="alert" title="Something went wrong">
+            {error}
+          </Callout>
+        </div>
+      ) : null}
 
-      <section className="space-y-3">
-        <h2 className="text-lg font-semibold">Subscriptions</h2>
-        {loading ? (
-          <p className="text-sm text-muted-foreground">Loading…</p>
-        ) : subs.length === 0 ? (
-          <p className="text-sm text-muted-foreground">
-            No active subscriptions. Visit Pricing to subscribe.
-          </p>
-        ) : (
-          <div className="space-y-2">
-            {subs.map((s) => (
-              <Card key={s.id}>
-                <CardContent className="space-y-3 py-4">
-                  <div className="flex flex-wrap items-center justify-between gap-3">
-                    <div className="flex flex-wrap items-center gap-3">
-                      <Badge variant={STATUS_VARIANT[s.status] ?? "outline"}>
-                        {s.status}
-                      </Badge>
-                      <span className="font-medium">{s.planDisplayName}</span>
-                      <span className="text-xs text-muted-foreground">
-                        {formatMoney(s.priceCents, s.currency)}/mo
-                      </span>
-                      {s.currentPeriodEnd && (
-                        <span className="text-xs text-muted-foreground">
-                          {s.cancelAtPeriodEnd ? "Cancels" : "Renews"}{" "}
-                          {new Date(s.currentPeriodEnd).toLocaleDateString()}
-                        </span>
-                      )}
-                      {s.stripeScheduleId && (
-                        <Badge variant="secondary" className="text-xs">
-                          downgrade pending
-                        </Badge>
-                      )}
-                      {s.cancelAtPeriodEnd && (
-                        <Badge variant="outline" className="text-xs">
-                          cancel scheduled
-                        </Badge>
-                      )}
-                    </div>
-                    <div className="flex gap-2">
-                      <Button
-                        size="sm"
-                        variant="outline"
-                        onClick={() =>
-                          setChangingPlanFor(
-                            changingPlanFor === s.id ? null : s.id,
-                          )
-                        }
-                        disabled={!!busy}
-                      >
-                        {changingPlanFor === s.id ? "Cancel" : "Change plan"}
-                      </Button>
-                      {!s.cancelAtPeriodEnd && s.status !== "canceled" && (
-                        <Button
-                          size="sm"
-                          variant="destructive"
-                          onClick={() => cancelSub(s.id)}
-                          disabled={busy === s.id}
-                        >
-                          {busy === s.id ? "…" : "Cancel"}
-                        </Button>
-                      )}
-                    </div>
-                  </div>
+      {pastDue.length > 0 ? (
+        <div style={{ marginBottom: 16 }}>
+          <Callout
+            kind="danger"
+            icon="alert"
+            title={`${pastDue.length} subscription${pastDue.length > 1 ? "s" : ""} past due`}
+          >
+            Assistant is paused until payment is collected. Update your card from the Stripe
+            portal to resume.
+            <div style={{ marginTop: 10 }}>
+              <button
+                type="button"
+                className="btn btn--danger btn--sm"
+                onClick={openPortal}
+                disabled={busy === "portal"}
+              >
+                <Icon name="creditCard" size={12} />
+                Update payment method
+              </button>
+            </div>
+          </Callout>
+        </div>
+      ) : null}
 
-                  {changingPlanFor === s.id && (
-                    <div className="space-y-2 border-t pt-3">
-                      <p className="text-sm font-medium">Switch to</p>
-                      <div className="grid gap-2 sm:grid-cols-2">
-                        {plans
-                          .filter((p) => p.id !== s.planId)
-                          .map((p) => {
-                            const isUpgrade = p.priceCents > s.priceCents;
-                            return (
-                              <div
-                                key={p.id}
-                                className="flex items-center justify-between rounded-md border px-3 py-2"
-                              >
-                                <div>
-                                  <div className="text-sm font-medium">
-                                    {p.displayName}
-                                  </div>
-                                  <div className="text-xs text-muted-foreground">
-                                    {formatMoney(p.priceCents, s.currency)}/mo ·{" "}
-                                    {isUpgrade ? "upgrade now" : "downgrade next period"}
-                                  </div>
-                                </div>
-                                <Button
-                                  size="sm"
-                                  onClick={() =>
-                                    changePlan(
-                                      s.id,
-                                      p.id,
-                                      isUpgrade ? "upgrade" : "downgrade",
-                                    )
-                                  }
-                                  disabled={busy === s.id}
-                                >
-                                  Switch
-                                </Button>
-                              </div>
-                            );
-                          })}
-                      </div>
-                    </div>
-                  )}
-                </CardContent>
-              </Card>
-            ))}
+      {/* Stat strip */}
+      <div className="grid4" style={{ marginBottom: 20 }}>
+        <div className="stat">
+          <div className="stat__label">Monthly total</div>
+          <div className="stat__value">
+            {formatPrice(monthlyTotal, defaultCurrency)}
+            <span className="unit">/mo</span>
           </div>
-        )}
-      </section>
+        </div>
+        <div className="stat">
+          <div className="stat__label">Subscriptions</div>
+          <div className="stat__value">{activeSubs.length}</div>
+          <div
+            className="faint"
+            style={{ fontSize: 11, marginTop: 3, fontFamily: "var(--font-geist-mono)" }}
+          >
+            {subs.length} total · {pastDue.length} past due
+          </div>
+        </div>
+        <div className="stat">
+          <div className="stat__label">Next charge</div>
+          <div className="stat__value">
+            {nextChargeDate ? formatDate(nextChargeDate) : "—"}
+          </div>
+          <div
+            className="faint"
+            style={{ fontSize: 11, marginTop: 3, fontFamily: "var(--font-geist-mono)" }}
+          >
+            {activeSubs.length > 0
+              ? `${formatMoney(monthlyTotal, defaultCurrency)} via Stripe`
+              : "no active subs"}
+          </div>
+        </div>
+        <div className="stat">
+          <div className="stat__label">Lifetime paid</div>
+          <div className="stat__value">{formatMoney(lifetimeCents, defaultCurrency)}</div>
+          <div
+            className="faint"
+            style={{ fontSize: 11, marginTop: 3, fontFamily: "var(--font-geist-mono)" }}
+          >
+            {invoices.filter((i) => i.status === "paid").length} paid invoices
+          </div>
+        </div>
+      </div>
 
-      <section className="space-y-3">
-        <h2 className="text-lg font-semibold">Invoices</h2>
-        {loading ? (
-          <p className="text-sm text-muted-foreground">Loading…</p>
-        ) : invoices.length === 0 ? (
-          <p className="text-sm text-muted-foreground">No invoices yet.</p>
+      {/* Subscriptions table */}
+      <SectionCard
+        title="Subscriptions"
+        sub="Each subscription backs one live assistant"
+        pad={false}
+        actions={
+          <Link
+            href={`/dashboard/${orgId}/pricing`}
+            className="btn btn--ghost btn--sm"
+          >
+            <Icon name="plus" size={12} />
+            Buy subscription
+          </Link>
+        }
+      >
+        {subs.length === 0 ? (
+          <div
+            style={{
+              padding: "40px 24px",
+              textAlign: "center",
+              color: "var(--muted-foreground)",
+            }}
+          >
+            <div style={{ fontSize: 13 }}>No subscriptions yet.</div>
+            <div style={{ marginTop: 12 }}>
+              <Link
+                href={`/dashboard/${orgId}/pricing`}
+                className="btn btn--primary btn--sm"
+              >
+                <Icon name="tag" size={12} />
+                See pricing
+              </Link>
+            </div>
+          </div>
         ) : (
-          <Card>
-            <CardHeader className="pb-2">
-              <CardTitle className="text-sm font-medium text-muted-foreground">
-                {invoices.length} invoice{invoices.length === 1 ? "" : "s"}
-              </CardTitle>
-            </CardHeader>
-            <CardContent className="space-y-1">
-              {invoices.map((inv) => (
-                <div
-                  key={inv.id}
-                  className="flex flex-wrap items-center justify-between gap-3 border-b py-2 last:border-0"
-                >
-                  <div className="flex flex-wrap items-center gap-3">
-                    <Badge variant={STATUS_VARIANT[inv.status] ?? "outline"}>
-                      {inv.status}
-                    </Badge>
-                    <span className="font-mono text-xs">
-                      {inv.number ?? inv.stripeInvoiceId.slice(0, 12)}
-                    </span>
-                    {inv.issuedAt && (
-                      <span className="text-xs text-muted-foreground">
-                        {new Date(inv.issuedAt).toLocaleDateString()}
-                      </span>
-                    )}
-                    <span className="text-sm">
-                      {formatMoney(inv.amountDue, inv.currency)}
-                    </span>
-                  </div>
-                  <div className="flex gap-3 text-xs">
-                    {inv.hostedInvoiceUrl && (
-                      <a
-                        href={inv.hostedInvoiceUrl}
-                        target="_blank"
-                        rel="noreferrer"
-                        className="underline"
-                      >
-                        View
-                      </a>
-                    )}
-                    {inv.invoicePdf && (
-                      <a
-                        href={inv.invoicePdf}
-                        target="_blank"
-                        rel="noreferrer"
-                        className="underline"
-                      >
-                        PDF
-                      </a>
-                    )}
-                  </div>
-                </div>
-              ))}
-            </CardContent>
-          </Card>
+          <table className="table">
+            <thead>
+              <tr>
+                <th>Plan</th>
+                <th>Status</th>
+                <th>Price</th>
+                <th>Renews / cancels</th>
+                <th>Created</th>
+                <th />
+              </tr>
+            </thead>
+            <tbody>
+              {subs.map((s) => {
+                const menuItems: RowMenuItem[] = [
+                  ...plans
+                    .filter((p) => p.id !== s.planId)
+                    .map<RowMenuItem>((p) => ({
+                      label: `Switch to ${p.displayName}`,
+                      icon: "tag",
+                      onClick: () =>
+                        changePlan(
+                          s.id,
+                          p.id,
+                          p.priceCents > s.priceCents ? "upgrade" : "downgrade",
+                        ),
+                    })),
+                  { divider: true },
+                  {
+                    label: "Manage in Stripe",
+                    icon: "link",
+                    onClick: openPortal,
+                  },
+                  ...(!s.cancelAtPeriodEnd && s.status !== "canceled"
+                    ? [
+                        {
+                          label: "Cancel subscription",
+                          icon: "trash" as const,
+                          destructive: true,
+                          onClick: () => setConfirmCancel(s.id),
+                        } satisfies RowMenuItem,
+                      ]
+                    : []),
+                ];
+
+                return (
+                  <tr key={s.id}>
+                    <td>
+                      <div style={{ display: "flex", flexDirection: "column", gap: 2 }}>
+                        <span style={{ fontWeight: 500 }}>{s.planDisplayName}</span>
+                        <span className="mono faint" style={{ fontSize: 11 }}>
+                          {s.stripeSubscriptionId.slice(0, 18)}…
+                        </span>
+                      </div>
+                    </td>
+                    <td>
+                      <div style={{ display: "flex", gap: 6, alignItems: "center", flexWrap: "wrap" }}>
+                        <StatusPill status={s.status} />
+                        {s.stripeScheduleId ? (
+                          <span className="pill pill--info">downgrade pending</span>
+                        ) : null}
+                        {s.cancelAtPeriodEnd ? (
+                          <span className="pill pill--warn">cancel scheduled</span>
+                        ) : null}
+                      </div>
+                    </td>
+                    <td className="mono">
+                      {formatMoney(s.priceCents, s.currency)}
+                      <span className="faint">/mo</span>
+                    </td>
+                    <td className="dim mono">
+                      {s.currentPeriodEnd ? formatDate(s.currentPeriodEnd) : "—"}
+                    </td>
+                    <td className="dim" style={{ fontSize: 12 }}>
+                      {formatDate(s.createdAt)}
+                    </td>
+                    <td style={{ textAlign: "right" }}>
+                      <div style={{ display: "flex", gap: 6, justifyContent: "flex-end" }}>
+                        <button
+                          type="button"
+                          className="btn btn--ghost btn--sm"
+                          onClick={() =>
+                            setChangingPlanFor(changingPlanFor === s.id ? null : s.id)
+                          }
+                          disabled={!!busy}
+                        >
+                          <Icon name="tag" size={12} />
+                          {changingPlanFor === s.id ? "Close" : "Change plan"}
+                        </button>
+                        <RowMenu items={menuItems} />
+                      </div>
+                    </td>
+                  </tr>
+                );
+              })}
+            </tbody>
+          </table>
         )}
-      </section>
+        {changingPlanFor ? (
+          <div
+            style={{
+              borderTop: "1px solid var(--db-hair)",
+              padding: "14px 18px",
+              background: "var(--db-bg-2)",
+            }}
+          >
+            <div className="uc faint" style={{ marginBottom: 10 }}>
+              Switch plan
+            </div>
+            <div
+              style={{
+                display: "grid",
+                gap: 8,
+                gridTemplateColumns: "repeat(auto-fill, minmax(240px, 1fr))",
+              }}
+            >
+              {plans
+                .filter((p) => {
+                  const sub = subs.find((ss) => ss.id === changingPlanFor);
+                  return sub && p.id !== sub.planId;
+                })
+                .map((p) => {
+                  const sub = subs.find((ss) => ss.id === changingPlanFor)!;
+                  const isUpgrade = p.priceCents > sub.priceCents;
+                  return (
+                    <div
+                      key={p.id}
+                      style={{
+                        display: "flex",
+                        alignItems: "center",
+                        justifyContent: "space-between",
+                        gap: 12,
+                        padding: "10px 12px",
+                        border: "1px solid var(--db-hair)",
+                        borderRadius: 8,
+                        background: "var(--db-surface)",
+                      }}
+                    >
+                      <div>
+                        <div style={{ fontSize: 13, fontWeight: 500 }}>{p.displayName}</div>
+                        <div className="faint" style={{ fontSize: 11 }}>
+                          {formatMoney(p.priceCents, p.currency)}/mo ·{" "}
+                          {isUpgrade ? "upgrade now" : "downgrade next period"}
+                        </div>
+                      </div>
+                      <button
+                        type="button"
+                        className="btn btn--ghost btn--sm"
+                        onClick={() =>
+                          changePlan(sub.id, p.id, isUpgrade ? "upgrade" : "downgrade")
+                        }
+                        disabled={busy === sub.id}
+                      >
+                        Switch
+                      </button>
+                    </div>
+                  );
+                })}
+            </div>
+          </div>
+        ) : null}
+      </SectionCard>
+
+      {/* Invoices */}
+      <div style={{ marginTop: 20 }}>
+        <SectionCard
+          title="Invoices"
+          sub="Paid via Stripe. VAT receipts available on each invoice."
+          pad={false}
+        >
+          {invoices.length === 0 ? (
+            <div
+              style={{
+                padding: "32px 24px",
+                textAlign: "center",
+                color: "var(--muted-foreground)",
+                fontSize: 13,
+              }}
+            >
+              No invoices yet.
+            </div>
+          ) : (
+            <table className="table">
+              <thead>
+                <tr>
+                  <th>Number</th>
+                  <th>Date</th>
+                  <th>Amount</th>
+                  <th>Status</th>
+                  <th />
+                </tr>
+              </thead>
+              <tbody>
+                {invoices.map((inv) => (
+                  <tr key={inv.id}>
+                    <td className="mono">
+                      {inv.number ?? inv.stripeInvoiceId.slice(0, 12)}
+                    </td>
+                    <td className="dim">
+                      {inv.issuedAt ? formatDate(inv.issuedAt) : "—"}
+                    </td>
+                    <td className="mono">{formatMoney(inv.amountDue, inv.currency)}</td>
+                    <td>
+                      <StatusPill status={inv.status} />
+                    </td>
+                    <td style={{ textAlign: "right" }}>
+                      <div style={{ display: "flex", gap: 6, justifyContent: "flex-end" }}>
+                        {inv.hostedInvoiceUrl ? (
+                          <a
+                            href={inv.hostedInvoiceUrl}
+                            target="_blank"
+                            rel="noreferrer"
+                            className="btn btn--ghost btn--sm"
+                          >
+                            <Icon name="link" size={12} />
+                            View
+                          </a>
+                        ) : null}
+                        {inv.invoicePdf ? (
+                          <a
+                            href={inv.invoicePdf}
+                            target="_blank"
+                            rel="noreferrer"
+                            className="btn btn--ghost btn--sm"
+                          >
+                            <Icon name="download" size={12} />
+                            PDF
+                          </a>
+                        ) : null}
+                      </div>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          )}
+        </SectionCard>
+      </div>
+
+      {/* Payment + billing details */}
+      <div className="grid2" style={{ marginTop: 20, gap: 20 }}>
+        <SectionCard
+          title="Payment methods"
+          sub="Managed in the Stripe Customer Portal"
+        >
+          <div className="faint" style={{ fontSize: 13, lineHeight: 1.55 }}>
+            We don&rsquo;t store card details. Head to the Stripe portal to add, remove, or
+            change your default payment method; invoices are emailed automatically.
+          </div>
+          <div style={{ marginTop: 14 }}>
+            <button
+              type="button"
+              className="btn btn--ghost"
+              onClick={openPortal}
+              disabled={busy === "portal"}
+            >
+              <Icon name="link" size={14} />
+              {busy === "portal" ? "Opening…" : "Open Stripe portal"}
+            </button>
+          </div>
+        </SectionCard>
+
+        <SectionCard title="Billing details" sub="Shown on Stripe invoices">
+          <dl className="kv">
+            <dt>Billed to</dt>
+            <dd>Your organization (Clerk)</dd>
+            <dt>Currency</dt>
+            <dd className="mono">{defaultCurrency}</dd>
+            <dt>Tax details</dt>
+            <dd className="faint">Add a tax ID from the Stripe portal</dd>
+          </dl>
+        </SectionCard>
+      </div>
+
+      {/* Cancel confirm */}
+      {confirmCancel ? (
+        <>
+          <div
+            className="cmdk-scrim"
+            onClick={() => setConfirmCancel(null)}
+            role="presentation"
+          />
+          <div className="modal" style={{ width: 420, padding: 28 }}>
+            <div style={{ fontSize: 18, fontWeight: 500, fontFamily: "var(--font-instrument-serif)" }}>
+              Cancel at the end of the period?
+            </div>
+            <div
+              className="faint"
+              style={{ fontSize: 13, marginTop: 8, lineHeight: 1.6 }}
+            >
+              Your assistant keeps running until the current billing period ends. After that
+              it stops and the credit is released.
+            </div>
+            <div style={{ display: "flex", gap: 8, marginTop: 20, justifyContent: "flex-end" }}>
+              <button
+                type="button"
+                className="btn btn--ghost"
+                onClick={() => setConfirmCancel(null)}
+              >
+                Keep subscription
+              </button>
+              <button
+                type="button"
+                className="btn btn--danger"
+                onClick={() => cancelSub(confirmCancel)}
+                disabled={busy === confirmCancel}
+              >
+                <Icon name="trash" size={14} />
+                {busy === confirmCancel ? "Cancelling…" : "Cancel at period end"}
+              </button>
+            </div>
+          </div>
+        </>
+      ) : null}
     </div>
   );
 }
