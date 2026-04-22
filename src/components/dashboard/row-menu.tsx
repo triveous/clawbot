@@ -90,12 +90,25 @@ export function RowMenu({
   const popover = open ? (
     <div
       ref={popRef}
-      className={`rowmenu__pop rowmenu__pop--${align}`}
+      // NOTE: we intentionally drop the `rowmenu__pop--right / --left`
+      // modifier classes here. Those set `right: 0` or `left: 0` in the
+      // stylesheet; combined with our inline `left` from getBoundingClientRect
+      // the browser would satisfy both sides and stretch the popover to the
+      // full viewport width. We handle horizontal placement entirely inline.
+      className="rowmenu__pop"
       onClick={(e) => e.stopPropagation()}
       style={{
         position: "fixed",
         top: pos?.top ?? -9999,
         left: pos?.left ?? -9999,
+        // Explicitly clear the side anchors from the base class (`top: calc(100%+4)`)
+        // and from the `--right`/`--left` modifiers we no longer apply.
+        right: "auto",
+        bottom: "auto",
+        // Let content size it naturally up to a sensible cap so a single-item
+        // menu doesn't stretch awkwardly.
+        width: "max-content",
+        maxWidth: "min(320px, calc(100vw - 16px))",
         // Hidden until we've computed the real position so the pop doesn't
         // flash in the top-left corner on the first render.
         visibility: pos ? "visible" : "hidden",

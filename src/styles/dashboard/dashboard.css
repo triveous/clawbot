@@ -418,16 +418,19 @@
   background: var(--db-red);
   /* Primary is always OpenClaw red; the contrasting text must always be the
      light foreground (shadcn's --primary-foreground, #ffffff in both themes).
-     We spell it out instead of inheriting from body so the light theme's dark
-     body color can't leak through into nested spans / icons. */
-  color: var(--primary-foreground, #ffffff);
+     We use !important because Tailwind + shadcn base-nova layer rules for
+     <a> / <button> come after ours in the cascade — without !important the
+     text inside <Link className="btn btn--primary"> resolves to the dark body
+     foreground in light mode, while the <Icon> svg stroke correctly renders
+     in white (it inherits from this very rule on the parent). */
+  color: var(--primary-foreground, #ffffff) !important;
   box-shadow:
     0 0 0 1px oklch(1 0 0 / 0.06) inset,
     0 1px 2px oklch(0 0 0 / 0.3);
 }
 .btn--primary,
 .btn--primary * {
-  color: var(--primary-foreground, #ffffff);
+  color: var(--primary-foreground, #ffffff) !important;
 }
 .btn--primary:hover {
   background: var(--claw-red-hover);
