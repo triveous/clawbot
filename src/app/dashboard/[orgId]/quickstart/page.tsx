@@ -1,6 +1,6 @@
 "use client";
 
-import { use, useCallback, useEffect, useState } from "react";
+import { use, useCallback, useEffect, useState, type ReactNode } from "react";
 import Link from "next/link";
 import { useRpc } from "@/hooks/use-rpc";
 import {
@@ -11,8 +11,88 @@ import {
   type IconName,
 } from "@/components/dashboard";
 
+function slugifyAssistantName(name: string) {
+  return name.replace(/[^a-z0-9]+/gi, "-").toLowerCase();
+}
+
+// The connect instructions diverge on access mode. SSH needs chmod + the
+// tunnel command; Tailscale is just a hostname in a browser. Both branches
+// fall back to a parametric template when we don't yet know which assistant
+// the reader owns.
+function connectStepBody(running: Assistant | undefined): ReactNode {
+  if (!running) {
+    return (
+      <>
+        <div style={{ marginBottom: 10 }}>
+          Once your assistant is live, this step shows the exact command or URL for
+          connecting — it depends on the access mode you picked at deploy time:
+        </div>
+        <ul style={{ margin: "0 0 10px 18px", fontSize: 13, lineHeight: 1.6 }}>
+          <li>
+            <b>SSH tunnel</b> — run a one-liner locally, then open{" "}
+            <span className="mono">http://localhost:8888</span>.
+          </li>
+          <li>
+            <b>Tailscale Serve</b> — no tunnel. Open{" "}
+            <span className="mono">https://&lt;your-hostname&gt;</span> once you&rsquo;re
+            on the tailnet.
+          </li>
+        </ul>
+      </>
+    );
+  }
+
+  if (running.accessMode === "ssh") {
+    const keyFile = `${slugifyAssistantName(running.name)}.pem`;
+    const ip = running.ipv4 ?? "<ip>";
+    const port = running.gatewayPort ?? 8443;
+    return (
+      <>
+        <div style={{ marginBottom: 10 }}>
+          Tunnel into the gateway on <span className="mono">{running.name}</span> using the SSH
+          private key you downloaded from the Access tab.
+        </div>
+        <CodeBlock code={`chmod 400 ${keyFile}`} />
+        <div style={{ height: 8 }} />
+        <CodeBlock code={`ssh -i ${keyFile} -N -L 8888:localhost:${port} root@${ip}`} />
+        <div className="faint" style={{ fontSize: 12, marginTop: 8 }}>
+          Keep the tunnel open and point your client at{" "}
+          <span className="mono">http://localhost:8888</span>.
+        </div>
+      </>
+    );
+  }
+
+  // tailscale_serve
+  const hostname = running.hostname ?? `${slugifyAssistantName(running.name)}.tail-scale.ts.net`;
+  return (
+    <>
+      <div style={{ marginBottom: 10 }}>
+        <span className="mono">{running.name}</span> is served over Tailscale Serve — no public
+        ports, no tunnel. Join your tailnet, then hit the assistant&rsquo;s hostname directly.
+      </div>
+      <CodeBlock code="tailscale up" />
+      <div style={{ height: 8 }} />
+      <CodeBlock prompt="→" code={`https://${hostname}`} />
+      <div className="faint" style={{ fontSize: 12, marginTop: 8 }}>
+        Tailscale Serve terminates TLS and authenticates from your tailnet identity — no gateway
+        token needed in the browser.
+      </div>
+    </>
+  );
+}
+
 type AssistantStatus = "creating" | "active" | "error" | "stopped";
-type Assistant = { id: string; name: string; status: AssistantStatus; hostname: string | null };
+type AccessMode = "ssh" | "tailscale_serve";
+type Assistant = {
+  id: string;
+  name: string;
+  status: AssistantStatus;
+  hostname: string | null;
+  ipv4: string | null;
+  gatewayPort: number | null;
+  accessMode: AccessMode;
+};
 type Credit = {
   planId: string;
   status: string;
@@ -140,20 +220,7 @@ export default function QuickstartPage({
       state: hasRunning ? "current" : "pending",
       icon: "terminal",
       title: "Connect from your terminal",
-      body: (
-        <>
-          <div style={{ marginBottom: 10 }}>
-            Tunnel into your gateway with the SSH key you downloaded. Replace{" "}
-            <span className="mono">&lt;name&gt;</span> with your assistant&rsquo;s name.
-          </div>
-          <CodeBlock code="chmod 400 <name>.pem" />
-          <div style={{ height: 8 }} />
-          <CodeBlock code="ssh -i <name>.pem -N -L 8888:localhost:8443 root@<ip>" />
-          <div className="faint" style={{ fontSize: 12, marginTop: 8 }}>
-            Then open <span className="mono">http://localhost:8888</span>.
-          </div>
-        </>
-      ),
+      body: connectStepBody(firstRunning),
     },
     {
       state: hasRunning ? "pending" : "pending",

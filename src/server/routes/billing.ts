@@ -1,5 +1,6 @@
 import { Hono } from "hono";
 import { HTTPException } from "hono/http-exception";
+import { auth } from "@clerk/nextjs/server";
 import { and, desc, eq } from "drizzle-orm";
 import { db } from "@/lib/db";
 import { invoices, plans, subscriptions } from "@/lib/db/schema";
@@ -12,6 +13,7 @@ import {
   cancelAtPeriodEnd,
   changeSubscriptionPlan,
 } from "@/lib/stripe/subscriptions";
+import { getStripe } from "@/lib/stripe/client";
 
 function appBaseUrl(): string {
   return process.env.NEXT_PUBLIC_APP_URL ?? "http://localhost:3000";
@@ -85,6 +87,54 @@ export const billingRoute = new Hono()
       .orderBy(desc(subscriptions.createdAt));
 
     return c.json({ subscriptions: rows });
+  })
+
+  // ─── Stripe cards (org-admin only) ────────────────────────────────────────
+  // Returns the card-type payment methods attached to this org's Stripe
+  // customer, plus which one is the default. No sensitive fields — just
+  // brand, last4, and expiry — so the UI can render the "Payment methods"
+  // card without giving the user the ability to mutate anything from here
+  // (the Stripe portal still owns add / remove / set-default).
+  .get("/payment-methods", async (c) => {
+    const { orgRole } = await auth();
+    if (orgRole !== "org:admin") {
+      throw new HTTPException(403, { message: "Org admin role required" });
+    }
+
+    const dbOrg = c.get("dbOrg");
+    if (!dbOrg.billingCustomerId) {
+      return c.json({ paymentMethods: [], defaultId: null });
+    }
+
+    const stripe = getStripe();
+    const [methods, customer] = await Promise.all([
+      stripe.paymentMethods.list({
+        customer: dbOrg.billingCustomerId,
+        type: "card",
+        limit: 20,
+      }),
+      stripe.customers.retrieve(dbOrg.billingCustomerId),
+    ]);
+
+    const defaultId =
+      !customer.deleted && typeof customer !== "string"
+        ? ((customer.invoice_settings?.default_payment_method as string | null) ??
+          null)
+        : null;
+
+    return c.json({
+      defaultId,
+      paymentMethods: methods.data.map((pm) => ({
+        id: pm.id,
+        brand: pm.card?.brand ?? "",
+        last4: pm.card?.last4 ?? "",
+        expMonth: pm.card?.exp_month ?? 0,
+        expYear: pm.card?.exp_year ?? 0,
+        funding: pm.card?.funding ?? "",
+        country: pm.card?.country ?? "",
+        isDefault: pm.id === defaultId,
+      })),
+    });
   })
 
   .get("/invoices", async (c) => {

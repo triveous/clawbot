@@ -2,6 +2,7 @@
 
 import { use, useCallback, useEffect, useMemo, useState } from "react";
 import Link from "next/link";
+import { useOrganization } from "@clerk/nextjs";
 import { useRpc } from "@/hooks/use-rpc";
 import {
   SectionCard,
@@ -12,6 +13,37 @@ import {
   type RowMenuItem,
 } from "@/components/dashboard";
 import { formatDate, formatPrice } from "@/lib/dashboard/format";
+
+type PaymentMethod = {
+  id: string;
+  brand: string;
+  last4: string;
+  expMonth: number;
+  expYear: number;
+  funding: string;
+  country: string;
+  isDefault: boolean;
+};
+
+const CARD_BRAND_COLORS: Record<string, string> = {
+  visa: "#1a1f71",
+  mastercard: "#eb001b",
+  amex: "#2e77bb",
+  discover: "#ff6000",
+  jcb: "#0e4c96",
+  diners: "#0079be",
+  unionpay: "#e21836",
+  unknown: "var(--db-surface-3)",
+};
+
+function brandLabel(brand: string) {
+  if (!brand) return "CARD";
+  if (brand === "mastercard") return "MC";
+  if (brand === "amex") return "AMEX";
+  if (brand === "discover") return "DISC";
+  if (brand === "jcb") return "JCB";
+  return brand.toUpperCase().slice(0, 6);
+}
 
 type Subscription = {
   id: string;
@@ -68,10 +100,14 @@ export default function BillingPage({
 }) {
   const { orgId } = use(params);
   const rpc = useRpc();
+  const { membership } = useOrganization();
+  const isAdmin = membership?.role === "org:admin";
 
   const [subs, setSubs] = useState<Subscription[]>([]);
   const [invoices, setInvoices] = useState<Invoice[]>([]);
   const [plans, setPlans] = useState<Plan[]>([]);
+  const [paymentMethods, setPaymentMethods] = useState<PaymentMethod[]>([]);
+  const [paymentMethodsLoaded, setPaymentMethodsLoaded] = useState(false);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
   const [busy, setBusy] = useState<string | null>(null);
@@ -105,9 +141,28 @@ export default function BillingPage({
     }
   }, [rpc]);
 
+  const loadPaymentMethods = useCallback(async () => {
+    setPaymentMethodsLoaded(false);
+    try {
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const res = await (rpc.api.billing as any)["payment-methods"].$get();
+      if (res.ok) {
+        const data = (await res.json()) as { paymentMethods: PaymentMethod[] };
+        setPaymentMethods(data.paymentMethods);
+      }
+    } finally {
+      setPaymentMethodsLoaded(true);
+    }
+  }, [rpc]);
+
   useEffect(() => {
     void load();
   }, [load]);
+
+  useEffect(() => {
+    if (!isAdmin) return;
+    void loadPaymentMethods();
+  }, [isAdmin, loadPaymentMethods]);
 
   const activeSubs = useMemo(
     () => subs.filter((s) => s.status === "active" || s.status === "trialing"),
@@ -579,23 +634,117 @@ export default function BillingPage({
       <div className="grid2" style={{ marginTop: 20, gap: 20 }}>
         <SectionCard
           title="Payment methods"
-          sub="Managed in the Stripe Customer Portal"
+          sub={
+            isAdmin
+              ? "Cards attached to your Stripe customer — add / remove in the portal"
+              : "Only org admins can view card details"
+          }
+          actions={
+            isAdmin ? (
+              <button
+                type="button"
+                className="btn btn--ghost btn--sm"
+                onClick={openPortal}
+                disabled={busy === "portal"}
+              >
+                <Icon name="plus" size={12} />
+                {busy === "portal" ? "Opening…" : "Add card"}
+              </button>
+            ) : null
+          }
         >
-          <div className="faint" style={{ fontSize: 13, lineHeight: 1.55 }}>
-            We don&rsquo;t store card details. Head to the Stripe portal to add, remove, or
-            change your default payment method; invoices are emailed automatically.
-          </div>
-          <div style={{ marginTop: 14 }}>
-            <button
-              type="button"
-              className="btn btn--ghost"
-              onClick={openPortal}
-              disabled={busy === "portal"}
+          {!isAdmin ? (
+            <Callout kind="info" icon="lock" title="Admin only">
+              Ask an org admin to review cards. You can still see subscriptions and invoices
+              above — only the raw card list is restricted.
+            </Callout>
+          ) : !paymentMethodsLoaded ? (
+            <div
+              className="faint"
+              style={{ fontSize: 13, padding: "8px 0" }}
             >
-              <Icon name="link" size={14} />
-              {busy === "portal" ? "Opening…" : "Open Stripe portal"}
-            </button>
-          </div>
+              Loading cards…
+            </div>
+          ) : paymentMethods.length === 0 ? (
+            <div className="faint" style={{ fontSize: 13, lineHeight: 1.55 }}>
+              No cards on file. Stripe asks for a card at checkout, so you&rsquo;ll get one
+              once you subscribe. You can also add one up-front from the portal.
+              <div style={{ marginTop: 14 }}>
+                <button
+                  type="button"
+                  className="btn btn--ghost"
+                  onClick={openPortal}
+                  disabled={busy === "portal"}
+                >
+                  <Icon name="link" size={14} />
+                  {busy === "portal" ? "Opening…" : "Open Stripe portal"}
+                </button>
+              </div>
+            </div>
+          ) : (
+            <div className="col" style={{ gap: 10 }}>
+              {paymentMethods.map((pm) => (
+                <div
+                  key={pm.id}
+                  style={{
+                    display: "flex",
+                    alignItems: "center",
+                    gap: 12,
+                    padding: 12,
+                    border: `1px solid ${pm.isDefault ? "var(--db-hair-strong)" : "var(--db-hair)"}`,
+                    borderRadius: 8,
+                    background: pm.isDefault ? "var(--db-surface-2)" : "transparent",
+                  }}
+                >
+                  <div
+                    style={{
+                      width: 42,
+                      height: 28,
+                      background:
+                        CARD_BRAND_COLORS[pm.brand] ?? CARD_BRAND_COLORS.unknown,
+                      borderRadius: 4,
+                      display: "grid",
+                      placeItems: "center",
+                      color: "#fff",
+                      fontSize: 10,
+                      fontWeight: 700,
+                      letterSpacing: "0.04em",
+                      flexShrink: 0,
+                    }}
+                  >
+                    {brandLabel(pm.brand)}
+                  </div>
+                  <div style={{ flex: 1, minWidth: 0 }}>
+                    <div style={{ fontSize: 13, fontWeight: 500 }}>
+                      <span className="mono">•••• •••• •••• {pm.last4 || "••••"}</span>
+                    </div>
+                    <div className="faint" style={{ fontSize: 11 }}>
+                      Expires{" "}
+                      <span className="mono">
+                        {String(pm.expMonth).padStart(2, "0")}/
+                        {String(pm.expYear).slice(-2)}
+                      </span>
+                      {pm.funding ? ` · ${pm.funding}` : null}
+                      {pm.country ? ` · ${pm.country.toUpperCase()}` : null}
+                    </div>
+                  </div>
+                  {pm.isDefault ? (
+                    <span className="pill pill--active">Default</span>
+                  ) : null}
+                </div>
+              ))}
+              <button
+                type="button"
+                className="btn btn--ghost btn--sm"
+                onClick={openPortal}
+                disabled={busy === "portal"}
+                style={{ alignSelf: "flex-start", marginTop: 4 }}
+              >
+                <Icon name="link" size={12} />
+                {busy === "portal" ? "Opening…" : "Manage in Stripe"}
+              </button>
+            </div>
+          )}
         </SectionCard>
 
         <SectionCard title="Billing details" sub="Shown on Stripe invoices">
