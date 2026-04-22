@@ -1,6 +1,6 @@
 "use client";
 
-import { use, useCallback, useEffect, useState } from "react";
+import { use, useCallback, useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { useRpc } from "@/hooks/use-rpc";
 import {
@@ -25,14 +25,7 @@ type Plan = {
   popular?: boolean;
 };
 
-type Credit = {
-  planId: string;
-  status: string;
-  consumedByAssistantId: string | null;
-  currentPeriodEnd: string | null;
-};
-
-function readBenefits(plan: Plan) {
+function readBenefits(plan: Plan): string[] {
   return Array.isArray(plan.benefits) ? (plan.benefits as string[]) : [];
 }
 
@@ -40,12 +33,21 @@ function readHetznerSpec(plan: Plan) {
   const spec = plan.providerSpec as
     | { hetzner?: { serverType?: string; cpu?: string; mem?: string; disk?: string } }
     | undefined;
-  return spec?.hetzner;
+  // Server type (cx33 etc.) is an internal Hetzner detail — omit it from the
+  // public pricing surface. Only the user-facing cpu/mem/disk appear.
+  const h = spec?.hetzner;
+  if (!h) return null;
+  return { cpu: h.cpu, mem: h.mem, disk: h.disk };
 }
 
 function hasStripePrice(plan: Plan) {
   const ids = plan.billingProviderIds as { stripePriceId?: string } | undefined;
   return typeof ids?.stripePriceId === "string";
+}
+
+function planSpecsLine(spec: ReturnType<typeof readHetznerSpec>): string | null {
+  if (!spec) return null;
+  return [spec.cpu, spec.mem, spec.disk].filter(Boolean).join(" · ") || null;
 }
 
 export default function PricingPage({
@@ -57,7 +59,6 @@ export default function PricingPage({
   const rpc = useRpc();
 
   const [plans, setPlans] = useState<Plan[]>([]);
-  const [credits, setCredits] = useState<Credit[]>([]);
   const [loading, setLoading] = useState(true);
   const [selected, setSelected] = useState<string | null>(null);
   const [checkoutFor, setCheckoutFor] = useState<string | null>(null);
@@ -65,17 +66,10 @@ export default function PricingPage({
 
   const load = useCallback(async () => {
     try {
-      const [pRes, cRes] = await Promise.all([
-        rpc.api.plans.$get(),
-        rpc.api.credits.$get(),
-      ]);
+      const pRes = await rpc.api.plans.$get();
       if (pRes.ok) {
         const d = (await pRes.json()) as { plans: Plan[] };
         setPlans(d.plans);
-      }
-      if (cRes.ok) {
-        const d = (await cRes.json()) as { credits: Credit[] };
-        setCredits(d.credits);
       }
     } finally {
       setLoading(false);
@@ -86,20 +80,18 @@ export default function PricingPage({
     void load();
   }, [load]);
 
-  const creditByPlan = new Map<string, number>();
-  const now = Date.now();
-  for (const c of credits) {
-    if (
-      c.status === "active" &&
-      !c.consumedByAssistantId &&
-      c.currentPeriodEnd &&
-      new Date(c.currentPeriodEnd).getTime() > now
-    ) {
-      creditByPlan.set(c.planId, (creditByPlan.get(c.planId) ?? 0) + 1);
-    }
-  }
+  const sortedPlans = useMemo(() => [...plans].sort((a, b) => a.tier - b.tier), [plans]);
 
-  const sortedPlans = [...plans].sort((a, b) => a.tier - b.tier);
+  // Build the union of every benefit listed across plans. For each card we
+  // show the plan's own benefits with a check, and everything else in the
+  // union with a cross — makes the tier differences obvious at a glance.
+  const allBenefits = useMemo(() => {
+    const seen = new Map<string, string>();
+    for (const p of sortedPlans) {
+      for (const b of readBenefits(p)) seen.set(b.toLowerCase(), b);
+    }
+    return [...seen.values()];
+  }, [sortedPlans]);
 
   async function startCheckout(planId: string) {
     setCheckoutFor(planId);
@@ -162,17 +154,29 @@ export default function PricingPage({
             {sortedPlans.map((p) => {
               const isSel = selected === p.id;
               const hetz = readHetznerSpec(p);
-              const benefits = readBenefits(p);
-              const owned = creditByPlan.get(p.id) ?? 0;
+              const specsLine = planSpecsLine(hetz);
+              const ownBenefits = readBenefits(p);
+              const ownBenefitsSet = new Set(ownBenefits.map((b) => b.toLowerCase()));
+              const missing = allBenefits.filter((b) => !ownBenefitsSet.has(b.toLowerCase()));
               const stripeReady = hasStripePrice(p);
               return (
-                <button
-                  type="button"
+                <div
                   key={p.id}
+                  role="button"
+                  tabIndex={0}
+                  aria-pressed={isSel}
                   className={`plan${p.popular ? " is-pop" : ""}${isSel && !p.popular ? " is-pop" : ""}`}
+                  style={{ cursor: "pointer", textAlign: "left" }}
                   onClick={() => setSelected(p.id)}
+                  onKeyDown={(e) => {
+                    if (e.key === "Enter" || e.key === " ") {
+                      e.preventDefault();
+                      setSelected(p.id);
+                    }
+                  }}
                 >
                   {p.popular ? <div className="plan__ribbon">Most popular</div> : null}
+
                   <div>
                     <div className="plan__name">{p.displayName}</div>
                     {p.tagline ? (
@@ -181,15 +185,14 @@ export default function PricingPage({
                       </div>
                     ) : null}
                   </div>
+
+                  {specsLine ? <div className="plan__specs">{specsLine}</div> : null}
+
                   <div className="plan__price">
                     <span className="amt">{formatPrice(p.priceCents, p.currency)}</span>
                     <span className="unit">/mo</span>
                   </div>
-                  {hetz ? (
-                    <div className="plan__specs">
-                      {[hetz.serverType, hetz.cpu, hetz.mem, hetz.disk].filter(Boolean).join(" · ")}
-                    </div>
-                  ) : null}
+
                   <div
                     style={{
                       height: 1,
@@ -197,32 +200,24 @@ export default function PricingPage({
                       margin: "6px 0",
                     }}
                   />
+
                   <div className="plan__benefits">
-                    {benefits.length > 0 ? (
-                      benefits.map((b, i) => (
-                        <div key={i} className="plan__benefit">
-                          <span className="ch">
-                            <Icon name="check" size={14} />
-                          </span>
-                          {b}
-                        </div>
-                      ))
-                    ) : (
-                      <div className="plan__benefit">
+                    {ownBenefits.map((b) => (
+                      <div key={`y-${b}`} className="plan__benefit">
                         <span className="ch">
                           <Icon name="check" size={14} />
                         </span>
-                        OpenClaw pre-installed
+                        {b}
                       </div>
-                    )}
-                    {owned > 0 ? (
-                      <div className="plan__benefit">
+                    ))}
+                    {missing.map((b) => (
+                      <div key={`n-${b}`} className="plan__benefit off">
                         <span className="ch">
-                          <Icon name="coins" size={14} />
+                          <Icon name="x" size={14} />
                         </span>
-                        You already have {owned} credit{owned > 1 ? "s" : ""} ready
+                        {b}
                       </div>
-                    ) : null}
+                    ))}
                   </div>
 
                   {!stripeReady ? (
@@ -230,7 +225,7 @@ export default function PricingPage({
                       className="faint"
                       style={{
                         fontSize: 11,
-                        marginTop: 8,
+                        marginTop: 4,
                         fontFamily: "var(--font-geist-mono)",
                       }}
                     >
@@ -258,7 +253,7 @@ export default function PricingPage({
                       `Select ${p.displayName}`
                     )}
                   </button>
-                </button>
+                </div>
               );
             })}
           </div>
