@@ -3,8 +3,9 @@
 import Link from "next/link";
 import Image from "next/image";
 import { usePathname } from "next/navigation";
-import { OrganizationSwitcher, UserButton } from "@clerk/nextjs";
+import { UserButton } from "@clerk/nextjs";
 import { Icon, type IconName } from "./icon";
+import { OrgSwitcher } from "./org-switcher";
 
 type NavItem =
   | { kind: "section"; label: string }
@@ -98,7 +99,13 @@ const NAV: NavItem[] = [
   },
 ];
 
-export function Sidebar({ orgId }: { orgId: string }) {
+export function Sidebar({
+  orgId,
+  onNewOrg,
+}: {
+  orgId: string;
+  onNewOrg: () => void;
+}) {
   const pathname = usePathname() ?? "";
 
   return (
@@ -116,26 +123,7 @@ export function Sidebar({ orgId }: { orgId: string }) {
         <div className="tag">BETA</div>
       </div>
 
-      <div className="orgswitch-wrap">
-        <OrganizationSwitcher
-          hidePersonal={false}
-          afterSelectOrganizationUrl="/dashboard/:id"
-          afterCreateOrganizationUrl="/dashboard/:id"
-          appearance={{
-            variables: {
-              colorBackground: "var(--card)",
-              colorText: "var(--foreground)",
-              colorPrimary: "var(--primary)",
-              borderRadius: "8px",
-              fontFamily: "var(--font-geist-sans)",
-            },
-            elements: {
-              rootBox: "orgswitch-clerk",
-              organizationSwitcherTrigger: "orgswitch",
-            },
-          }}
-        />
-      </div>
+      <OrgSwitcher orgId={orgId} onNewOrg={onNewOrg} />
 
       <nav className="nav">
         {NAV.map((item, idx) => {

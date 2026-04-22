@@ -50,7 +50,7 @@ export function DashboardShell({
   return (
     <>
       <div className="app">
-        <Sidebar orgId={orgId} />
+        <Sidebar orgId={orgId} onNewOrg={() => setNewOrgOpen(true)} />
         <main className="main">
           <Topbar orgId={orgId} onOpenPalette={() => setPaletteOpen(true)} />
           <div className="page">{children}</div>
