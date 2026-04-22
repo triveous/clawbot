@@ -10,3 +10,6 @@ export { LineChart, type ChartSeries } from "./line-chart";
 export { Segmented, type SegmentedOption } from "./segmented";
 export { EmptyStage } from "./empty-stage";
 export { CreateAssistantDrawer } from "./create-assistant-drawer";
+export { CreateAssistantWizard } from "./create-assistant-wizard";
+export { FirstAssistantHero } from "./first-assistant-hero";
+export { ClawSigil } from "./claw-sigil";

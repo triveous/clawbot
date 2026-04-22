@@ -9,9 +9,11 @@ import {
   StatusPill,
   Segmented,
   Callout,
-  EmptyStage,
   CreateAssistantDrawer,
+  CreateAssistantWizard,
+  FirstAssistantHero,
 } from "@/components/dashboard";
+import { useOrganization } from "@clerk/nextjs";
 import { relTime } from "@/lib/dashboard/format";
 import type { AssistantResponse, AssistantStatus } from "@/types/assistant";
 
@@ -69,7 +71,9 @@ export default function AssistantsPage({
   const [loading, setLoading] = useState(true);
   const [filter, setFilter] = useState<Filter>("all");
   const [retrying, setRetrying] = useState<Record<string, boolean>>({});
-  const [createOpen, setCreateOpen] = useState(false);
+  const [drawerOpen, setDrawerOpen] = useState(false);
+  const [wizardOpen, setWizardOpen] = useState(false);
+  const { organization } = useOrganization();
 
   const loadAll = useCallback(async () => {
     try {
@@ -138,32 +142,20 @@ export default function AssistantsPage({
   if (assistants.length === 0) {
     return (
       <>
-        <EmptyStage icon="bot" title="Deploy your first assistant" stage="No assistants yet">
-          Pick a plan, name it, and we&rsquo;ll spin up a fresh OpenClaw VPS in a couple of minutes.
-          <div
-            style={{ marginTop: 20, display: "flex", gap: 8, justifyContent: "center" }}
-          >
-            {availableCredits.length > 0 ? (
-              <button
-                type="button"
-                className="btn btn--primary"
-                onClick={() => setCreateOpen(true)}
-              >
-                <Icon name="zap" size={14} />
-                Deploy assistant
-              </button>
-            ) : (
-              <Link href={`/dashboard/${orgId}/pricing`} className="btn btn--primary">
-                <Icon name="zap" size={14} />
-                Start with a plan
-              </Link>
-            )}
-          </div>
-        </EmptyStage>
-        <CreateAssistantDrawer
-          open={createOpen}
-          onClose={() => setCreateOpen(false)}
-          onCreated={(id) => router.push(`/dashboard/${orgId}/assistant/${id}`)}
+        <FirstAssistantHero
+          orgName={organization?.name ?? "this workspace"}
+          onStart={() => setWizardOpen(true)}
+          paused={wizardOpen}
+        />
+        <CreateAssistantWizard
+          orgId={orgId}
+          isFirst
+          open={wizardOpen}
+          onClose={() => setWizardOpen(false)}
+          onDeployed={(id) => {
+            setWizardOpen(false);
+            router.push(`/dashboard/${orgId}/assistant/${id}`);
+          }}
         />
       </>
     );
@@ -193,8 +185,17 @@ export default function AssistantsPage({
           <Segmented<Filter> value={filter} onChange={setFilter} options={FILTER_OPTIONS} />
           <button
             type="button"
+            className="btn btn--ghost"
+            onClick={() => setWizardOpen(true)}
+            title="Immersive create flow"
+          >
+            <Icon name="zap" size={14} />
+            Wizard
+          </button>
+          <button
+            type="button"
             className="btn btn--primary"
-            onClick={() => setCreateOpen(true)}
+            onClick={() => setDrawerOpen(true)}
           >
             <Icon name="plus" size={14} />
             New assistant
@@ -300,10 +301,21 @@ export default function AssistantsPage({
       </div>
 
       <CreateAssistantDrawer
-        open={createOpen}
-        onClose={() => setCreateOpen(false)}
+        open={drawerOpen}
+        onClose={() => setDrawerOpen(false)}
         onCreated={async (id) => {
           await loadAll();
+          router.push(`/dashboard/${orgId}/assistant/${id}`);
+        }}
+      />
+
+      <CreateAssistantWizard
+        orgId={orgId}
+        isFirst={false}
+        open={wizardOpen}
+        onClose={() => setWizardOpen(false)}
+        onDeployed={(id) => {
+          setWizardOpen(false);
           router.push(`/dashboard/${orgId}/assistant/${id}`);
         }}
       />
