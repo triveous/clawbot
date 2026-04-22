@@ -3,6 +3,13 @@
 import { useEffect, useMemo, useState } from "react";
 import { useRpc } from "@/hooks/use-rpc";
 import { Icon, Field, Callout, Segmented } from "@/components/dashboard";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 import { formatPrice } from "@/lib/dashboard/format";
 import type { AccessMode } from "@/types/assistant";
 
@@ -308,17 +315,23 @@ export function CreateAssistantDrawer({
               </Field>
 
               <Field label="Region">
-                <select
-                  className="select"
+                <Select
                   value={region}
-                  onChange={(e) => setRegion(e.target.value)}
+                  onValueChange={(v) => {
+                    if (v) setRegion(v);
+                  }}
                 >
-                  {REGION_OPTIONS.map((r) => (
-                    <option key={r.value} value={r.value}>
-                      {r.label}
-                    </option>
-                  ))}
-                </select>
+                  <SelectTrigger className="w-full">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {REGION_OPTIONS.map((r) => (
+                      <SelectItem key={r.value} value={r.value}>
+                        {r.label}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
               </Field>
 
               <Field

@@ -17,6 +17,13 @@ import {
   RowMenu,
   type RowMenuItem,
 } from "@/components/dashboard";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 import { formatDate } from "@/lib/dashboard/format";
 
 type Member = {
@@ -196,14 +203,20 @@ export default function MembersPage() {
             </Field>
           </div>
           <Field label="Role">
-            <select
-              className="select"
+            <Select
               value={role}
-              onChange={(e) => setRole(e.target.value)}
+              onValueChange={(v) => {
+                if (v) setRole(v);
+              }}
             >
-              <option value="org:member">Member</option>
-              <option value="org:admin">Admin</option>
-            </select>
+              <SelectTrigger className="w-36">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="org:member">Member</SelectItem>
+                <SelectItem value="org:admin">Admin</SelectItem>
+              </SelectContent>
+            </Select>
           </Field>
           <button
             type="button"
@@ -307,15 +320,20 @@ export default function MembersPage() {
                         </div>
                       </td>
                       <td>
-                        <select
-                          className="select"
+                        <Select
                           value={m.role}
-                          onChange={(e) => void changeRole(m.userId, e.target.value)}
-                          style={{ maxWidth: 140 }}
+                          onValueChange={(v) => {
+                            if (v) void changeRole(m.userId, v);
+                          }}
                         >
-                          <option value="org:member">Member</option>
-                          <option value="org:admin">Admin</option>
-                        </select>
+                          <SelectTrigger className="w-36">
+                            <SelectValue />
+                          </SelectTrigger>
+                          <SelectContent>
+                            <SelectItem value="org:member">Member</SelectItem>
+                            <SelectItem value="org:admin">Admin</SelectItem>
+                          </SelectContent>
+                        </Select>
                       </td>
                       <td style={{ textAlign: "right" }}>
                         <RowMenu items={menu} />

@@ -18,6 +18,26 @@ import { Badge } from "@/components/ui/badge";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
+
+// Hetzner server types available on our snapshot family; labelled so the
+// platform admin can pick at a glance. Centralised so the Create Plan and
+// Edit Plan panels stay in sync.
+const HETZNER_SERVER_TYPES: { value: string; label: string }[] = [
+  { value: "cx23", label: "cx23 — 2 vCPU Intel, 4 GB, 20 GB disk" },
+  { value: "cx33", label: "cx33 — 4 vCPU Intel, 8 GB, 40 GB disk" },
+  { value: "cx43", label: "cx43 — 8 vCPU Intel, 16 GB, 80 GB disk" },
+  { value: "cpx11", label: "cpx11 — 2 vCPU AMD, 2 GB, 80 GB disk" },
+  { value: "cpx21", label: "cpx21 — 3 vCPU AMD, 4 GB, 100 GB disk" },
+  { value: "cax11", label: "cax11 — 2 vCPU ARM, 4 GB, 40 GB disk" },
+  { value: "cax21", label: "cax21 — 4 vCPU ARM, 8 GB, 80 GB disk" },
+];
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -294,19 +314,23 @@ function PlansPanel() {
             </div>
             <div className="flex flex-col gap-1">
               <Label>Hetzner Server Type</Label>
-              <select
+              <Select
                 value={hetznerServerType}
-                onChange={(e) => setHetznerServerType(e.target.value)}
-                className="rounded-lg border border-border bg-background px-3 py-1.5 text-sm"
+                onValueChange={(v) => {
+                  if (v) setHetznerServerType(v);
+                }}
               >
-                <option value="cx23">cx23 — 2 vCPU Intel, 4 GB, 20 GB disk</option>
-                <option value="cx33">cx33 — 4 vCPU Intel, 8 GB, 40 GB disk</option>
-                <option value="cx43">cx43 — 8 vCPU Intel, 16 GB, 80 GB disk</option>
-                <option value="cpx11">cpx11 — 2 vCPU AMD, 2 GB, 80 GB disk</option>
-                <option value="cpx21">cpx21 — 3 vCPU AMD, 4 GB, 100 GB disk</option>
-                <option value="cax11">cax11 — 2 vCPU ARM, 4 GB, 40 GB disk</option>
-                <option value="cax21">cax21 — 4 vCPU ARM, 8 GB, 80 GB disk</option>
-              </select>
+                <SelectTrigger className="w-full">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  {HETZNER_SERVER_TYPES.map((t) => (
+                    <SelectItem key={t.value} value={t.value}>
+                      {t.label}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
             </div>
             <div className="flex flex-col gap-1">
               <Label>Benefits (one per line)</Label>
@@ -415,19 +439,23 @@ function PlansPanel() {
                     </div>
                     <div className="flex flex-col gap-1">
                       <Label>Hetzner Server Type</Label>
-                      <select
+                      <Select
                         value={editHetznerServerType}
-                        onChange={(e) => setEditHetznerServerType(e.target.value)}
-                        className="rounded-lg border border-border bg-background px-3 py-1.5 text-sm"
+                        onValueChange={(v) => {
+                          if (v) setEditHetznerServerType(v);
+                        }}
                       >
-                        <option value="cx23">cx23 — 2 vCPU Intel, 4 GB, 20 GB disk</option>
-                        <option value="cx33">cx33 — 4 vCPU Intel, 8 GB, 40 GB disk</option>
-                        <option value="cx43">cx43 — 8 vCPU Intel, 16 GB, 80 GB disk</option>
-                        <option value="cpx11">cpx11 — 2 vCPU AMD, 2 GB, 80 GB disk</option>
-                        <option value="cpx21">cpx21 — 3 vCPU AMD, 4 GB, 100 GB disk</option>
-                        <option value="cax11">cax11 — 2 vCPU ARM, 4 GB, 40 GB disk</option>
-                        <option value="cax21">cax21 — 4 vCPU ARM, 8 GB, 80 GB disk</option>
-                      </select>
+                        <SelectTrigger className="w-full">
+                          <SelectValue />
+                        </SelectTrigger>
+                        <SelectContent>
+                          {HETZNER_SERVER_TYPES.map((t) => (
+                            <SelectItem key={t.value} value={t.value}>
+                              {t.label}
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
                     </div>
                     <div className="flex flex-col gap-1">
                       <Label>Benefits (one per line)</Label>
@@ -521,15 +549,23 @@ function CreditsPanel() {
             </div>
             <div className="flex flex-col gap-1">
               <Label>Plan</Label>
-              <select
+              <Select
                 value={mintPlanId}
-                onChange={(e) => setMintPlanId(e.target.value)}
-                className="rounded-lg border border-border bg-background px-3 py-1.5 text-sm"
+                onValueChange={(v) => {
+                  if (v) setMintPlanId(v);
+                }}
               >
-                {plans.map((p) => (
-                  <option key={p.id} value={p.id}>{p.displayName}</option>
-                ))}
-              </select>
+                <SelectTrigger className="w-48">
+                  <SelectValue placeholder="Select plan" />
+                </SelectTrigger>
+                <SelectContent>
+                  {plans.map((p) => (
+                    <SelectItem key={p.id} value={p.id}>
+                      {p.displayName}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
             </div>
             <div className="flex flex-col gap-1">
               <Label>Duration (days)</Label>
