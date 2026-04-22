@@ -17,14 +17,13 @@ import {
   type IconName,
 } from "@/components/dashboard";
 
-type Tab = "account" | "organization" | "appearance" | "notifications" | "danger";
+type Tab = "account" | "organization" | "appearance" | "notifications";
 
 const TABS: { key: Tab; label: string; icon: IconName; adminOnly?: boolean }[] = [
   { key: "account", label: "Account", icon: "settings" },
   { key: "organization", label: "Organization", icon: "shield", adminOnly: true },
   { key: "appearance", label: "Appearance", icon: "sun" },
   { key: "notifications", label: "Notifications", icon: "bell" },
-  { key: "danger", label: "Danger zone", icon: "alert", adminOnly: true },
 ];
 
 export default function SettingsPage() {
@@ -38,6 +37,24 @@ export default function SettingsPage() {
 
   return (
     <div>
+      <style>{`
+        .section-heading {
+          display: flex;
+          align-items: center;
+          gap: 10px;
+          margin: 24px 2px 6px;
+          font-size: 11px;
+          font-weight: 600;
+          letter-spacing: 0.08em;
+          text-transform: uppercase;
+          color: var(--destructive);
+        }
+        .section-heading__rule {
+          flex: 1;
+          height: 1px;
+          background: color-mix(in oklab, var(--destructive) 30%, transparent);
+        }
+      `}</style>
       <div className="page__head">
         <div>
           <h1 className="page__title">Settings</h1>
@@ -82,14 +99,6 @@ export default function SettingsPage() {
       {tab === "appearance" ? <AppearanceTab /> : null}
 
       {tab === "notifications" ? <NotificationsTab /> : null}
-
-      {tab === "danger" ? (
-        orgLoaded && organization && isAdmin ? (
-          <DangerTab />
-        ) : (
-          <AdminGate feature="the danger zone" />
-        )
-      ) : null}
     </div>
   );
 }
@@ -564,6 +573,13 @@ function OrganizationTab() {
           </dd>
         </dl>
       </SectionCard>
+
+      <div className="section-heading">
+        <Icon name="alert" size={14} />
+        <span>Danger zone</span>
+        <div className="section-heading__rule" />
+      </div>
+      <OrgDangerZone />
     </div>
   );
 }
@@ -718,7 +734,9 @@ function NotificationsTab() {
 
 // ─── Danger zone ──────────────────────────────────────────────────────────
 
-function DangerTab() {
+// Rendered inside the Organization tab under a "Danger zone" section header
+// so the scary controls live next to the org identity they mutate.
+function OrgDangerZone() {
   const { organization } = useOrganization();
   const router = useRouter();
   const [confirmName, setConfirmName] = useState("");
