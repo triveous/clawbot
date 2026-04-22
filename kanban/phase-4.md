@@ -64,20 +64,84 @@ Reference: [Phase 4 Docs](../docs/phase-4-dashboard.md)
 
 ---
 
-## 4e — UI overhaul + Design System 🔜 NEXT
+## 4e — UI overhaul + Design System 🚧 IN PROGRESS
 
-Design system first, then all dashboard surfaces get rebuilt consistently.
+Built from the Claude Design handoff bundle (`clawbot-handoff`) — all surfaces get the same chrome (sidebar, topbar, notifications, theme toggle) and every primitive is a typed TSX component. Shipped in small stages so each commit can be reviewed independently.
 
-- [ ] Define design tokens (color, spacing, radius, shadow) in `src/styles/tokens.css` or Tailwind config
-- [ ] Build shared component library: `StatusPill`, `CopyableCode`, `SectionCard`, `EmptyState`, `SkeletonRow`, `ConfirmDialog`
-- [ ] Dashboard list page (`/dashboard/[orgId]`) — full redesign: plan badge, status pill, empty state, create form as drawer/modal
-- [ ] Assistant detail page — consistent card layout, polished typography, loading skeletons
-- [ ] Credits page — plan card design matching pricing
-- [ ] Pricing page (`/dashboard/[orgId]/pricing`) — plan cards with benefits bullets, resource limits, CTA (disabled until Phase 5)
-- [ ] Admin page — consistent table/form patterns
-- [ ] Members page — polished member list + invite flow
-- [ ] Dark mode — dashboard forced dark; respect system preference on marketing pages
-- [ ] Mobile layout — all pages usable on small screens
+### Foundation + Shell ✅ Stage 1
+
+- [x] Instrument Serif added via `next/font/google` → `--font-instrument-serif`; Geist Sans + Geist Mono kept
+- [x] `src/app/globals.css` rewritten to a warm palette: `--primary` = OpenClaw red (`oklch(0.63 0.195 28)`), paper-warm light mode, warm near-black dark mode; shadcn sidebar/chart vars follow
+- [x] Design CSS copied to `src/styles/dashboard/` (`dashboard.css`, `first-assistant.css`, `docs.css`) — all `--db-*` and `--claw-*` tokens aliased to standard shadcn vars via a `.dashboard-root` bridge, so there is no parallel design system
+- [x] `src/components/dashboard/icon.tsx` — typed `<Icon name={...}>` with all Lucide paths from the bundle (~60 icons)
+- [x] Primitives ported to TSX: `Pill`, `StatusPill`, `SectionCard`, `CodeBlock`, `Callout`, `Field`, `RowMenu`, `Sparkline`, `LineChart`, `EmptyStage`
+- [x] Brand assets copied to `public/brand/` (`logo-mark.svg`, `logo-mark-light.svg`, `logo-wordmark.svg`)
+- [x] `src/components/dashboard/sidebar.tsx` — Clerk `OrganizationSwitcher` + `UserButton` behind design chrome, nav items backed by `next/link` with active-route detection
+- [x] `src/components/dashboard/topbar.tsx` — pathname-derived breadcrumb, search trigger placeholder (Stage 5 wires command palette), help link, theme toggle, notification bell
+- [x] `src/components/dashboard/theme-toggle.tsx` — swaps `.dark` class on `<html>`; `theme-init.tsx` inlines a pre-paint script so the first frame uses the stored theme
+- [x] `src/components/dashboard/notif-bell.tsx` — tabbed inbox (All/Unread/Alerts) with grouped buckets; seed list stubbed until a notifications API lands
+- [x] `src/app/dashboard/[orgId]/layout.tsx` — new shell replacing the previous simple aside; wraps all existing pages without changing their code
+- [x] Placeholder pages for nav items not yet implemented: `settings/`, `quickstart/`, `docs/`, `notifications/`
+
+**Design-token → shadcn-var mapping** (applied in `src/styles/dashboard/dashboard.css` under `.dashboard-root`):
+
+| Design token       | shadcn var                                                      |
+| ------------------ | --------------------------------------------------------------- |
+| `--db-bg`          | `--background`                                                  |
+| `--db-bg-2`        | `--muted`                                                       |
+| `--db-surface`     | `--card`                                                        |
+| `--db-surface-2`   | `--muted`                                                       |
+| `--db-surface-3`   | `--accent`                                                      |
+| `--db-hair`        | `--border`                                                      |
+| `--db-hair-strong` | `color-mix(in oklab, var(--foreground) 18%, transparent)`       |
+| `--db-ring`        | `--ring`                                                        |
+| `--db-text`        | `--foreground`                                                  |
+| `--db-text-dim`    | `--muted-foreground`                                            |
+| `--db-text-faint`  | `color-mix(in oklab, var(--muted-foreground) 70%, transparent)` |
+| `--db-red`         | `--primary`                                                     |
+| `--db-red-dim`     | `color-mix(in oklab, var(--primary) 16%, transparent)`          |
+| `--claw-red`       | `--primary`                                                     |
+| `--claw-red-hover` | `color-mix(in oklab, var(--primary) 88%, black 12%)`            |
+| `--claw-ink-50`    | `--foreground`                                                  |
+| `--claw-ink-950`   | `--background`                                                  |
+| `--font-sans`      | `--font-geist-sans`                                             |
+| `--font-mono`      | `--font-geist-mono`                                             |
+| `--font-display`   | `--font-instrument-serif`                                       |
+
+### Assistants list + tabbed detail 🔜 Stage 2
+
+- [ ] `/dashboard/[orgId]` — assistants grid/table driven by `GET /api/assistants`; filter chips (All/Running/Provisioning/Error/Stopped); empty state for orgs with zero assistants; CTA opens first-assistant wizard (Stage 5)
+- [ ] `/dashboard/[orgId]/assistant/[id]` — tabbed detail: Overview, Preview, Terminal, Logs, Versions, Files, Monitor, Storage, Server, Security
+  - [ ] Overview — status, plan, region, provider, access mode, hostname, gateway token, SSH command, CPU sparkline (wired to `/:id/metrics`)
+  - [ ] Server — IPs, firewall allowed-IPs editor wired to `PATCH /:id/firewall`, danger zone (retry, delete) wired to existing routes
+  - [ ] Security — SSH key download wired to `/:id/ssh-key`, gateway token reveal/mask, allowed-IPs list
+  - [ ] Monitor — line chart fed by `/:id/metrics?type=cpu|disk|network&window=...`
+  - [ ] Preview / Terminal / Logs / Versions / Files / Storage — UI shipped, backends deferred per Phase 4e "Deferred" notes; UI should render a "coming soon" state inside the tab (per handoff instruction: don't remove the UI component even if the feature isn't wired yet)
+
+### Billing + Pricing 🔜 Stage 3
+
+- [ ] `/dashboard/[orgId]/billing` — summary (MRR, active subscriptions, next invoice), subscriptions table driven by `GET /api/billing/subscriptions`, invoices table driven by `GET /api/billing/invoices`, payment method section with Stripe Customer Portal link
+- [ ] `/dashboard/[orgId]/pricing` — plan cards (Starter/Growth/Pro/Business) with benefits bullets, resource limits, price; "Buy plan" wired to checkout
+
+### Members + Settings + Onboarding + Admin + Docs + Notifications 🔜 Stage 4
+
+- [ ] Members — styled member list + Clerk invite flow
+- [ ] Settings — account, organization, notification prefs
+- [ ] Quickstart — guided pick-plan → deploy → connect-channel
+- [ ] Admin — plan and credit management (existing wiring, new chrome)
+- [ ] Docs — in-dashboard reference (markdown files already in `/docs`)
+- [ ] Notifications — full inbox view with filters and bulk actions
+
+### First-assistant wizard + Command palette 🔜 Stage 5
+
+- [ ] `FirstAssistantWizard` modal — pick plan → region → access mode → deploy; wired to `POST /api/assistants`
+- [ ] Command palette (⌘K) — global search + jump-to-route
+- [ ] `NewOrgDialog` — create-organization modal inside the design chrome
+
+### Dark mode + mobile
+
+- [x] Dark-mode toggle in topbar; persists via `cb:theme` localStorage; pre-paint script in layout avoids FOUC
+- [ ] Mobile breakpoints — sidebar → drawer, topbar wraps, cards stack (tracked per stage)
 
 ---
 
