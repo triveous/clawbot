@@ -2,6 +2,7 @@
 
 import { use, useCallback, useEffect, useMemo, useState } from "react";
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 import { useRpc } from "@/hooks/use-rpc";
 import {
   Icon,
@@ -9,6 +10,7 @@ import {
   Segmented,
   Callout,
   EmptyStage,
+  CreateAssistantDrawer,
 } from "@/components/dashboard";
 import { relTime } from "@/lib/dashboard/format";
 import type { AssistantResponse, AssistantStatus } from "@/types/assistant";
@@ -59,6 +61,7 @@ export default function AssistantsPage({
 }) {
   const { orgId } = use(params);
   const rpc = useRpc();
+  const router = useRouter();
 
   const [assistants, setAssistants] = useState<AssistantResponse[]>([]);
   const [plans, setPlans] = useState<Plan[]>([]);
@@ -66,6 +69,7 @@ export default function AssistantsPage({
   const [loading, setLoading] = useState(true);
   const [filter, setFilter] = useState<Filter>("all");
   const [retrying, setRetrying] = useState<Record<string, boolean>>({});
+  const [createOpen, setCreateOpen] = useState(false);
 
   const loadAll = useCallback(async () => {
     try {
@@ -133,15 +137,35 @@ export default function AssistantsPage({
 
   if (assistants.length === 0) {
     return (
-      <EmptyStage icon="bot" title="Deploy your first assistant" stage="No assistants yet">
-        Pick a plan, name it, and we&rsquo;ll spin up a fresh OpenClaw VPS in a couple of minutes.
-        <div style={{ marginTop: 20 }}>
-          <Link href={`/dashboard/${orgId}/pricing`} className="btn btn--primary">
-            <Icon name="zap" size={14} />
-            Start with a plan
-          </Link>
-        </div>
-      </EmptyStage>
+      <>
+        <EmptyStage icon="bot" title="Deploy your first assistant" stage="No assistants yet">
+          Pick a plan, name it, and we&rsquo;ll spin up a fresh OpenClaw VPS in a couple of minutes.
+          <div
+            style={{ marginTop: 20, display: "flex", gap: 8, justifyContent: "center" }}
+          >
+            {availableCredits.length > 0 ? (
+              <button
+                type="button"
+                className="btn btn--primary"
+                onClick={() => setCreateOpen(true)}
+              >
+                <Icon name="zap" size={14} />
+                Deploy assistant
+              </button>
+            ) : (
+              <Link href={`/dashboard/${orgId}/pricing`} className="btn btn--primary">
+                <Icon name="zap" size={14} />
+                Start with a plan
+              </Link>
+            )}
+          </div>
+        </EmptyStage>
+        <CreateAssistantDrawer
+          open={createOpen}
+          onClose={() => setCreateOpen(false)}
+          onCreated={(id) => router.push(`/dashboard/${orgId}/assistant/${id}`)}
+        />
+      </>
     );
   }
 
@@ -167,10 +191,14 @@ export default function AssistantsPage({
         </div>
         <div className="page__actions">
           <Segmented<Filter> value={filter} onChange={setFilter} options={FILTER_OPTIONS} />
-          <Link href={`/dashboard/${orgId}/pricing`} className="btn btn--primary">
+          <button
+            type="button"
+            className="btn btn--primary"
+            onClick={() => setCreateOpen(true)}
+          >
             <Icon name="plus" size={14} />
             New assistant
-          </Link>
+          </button>
         </div>
       </div>
 
@@ -270,6 +298,15 @@ export default function AssistantsPage({
           })
         )}
       </div>
+
+      <CreateAssistantDrawer
+        open={createOpen}
+        onClose={() => setCreateOpen(false)}
+        onCreated={async (id) => {
+          await loadAll();
+          router.push(`/dashboard/${orgId}/assistant/${id}`);
+        }}
+      />
     </div>
   );
 }

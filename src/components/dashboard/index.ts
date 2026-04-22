@@ -9,3 +9,4 @@ export { Sparkline } from "./sparkline";
 export { LineChart, type ChartSeries } from "./line-chart";
 export { Segmented, type SegmentedOption } from "./segmented";
 export { EmptyStage } from "./empty-stage";
+export { CreateAssistantDrawer } from "./create-assistant-drawer";
