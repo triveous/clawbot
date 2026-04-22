@@ -130,14 +130,14 @@ Built from the Claude Design handoff bundle (`clawbot-handoff`) — all surfaces
 - [x] `/dashboard/[orgId]/pricing/page.tsx` — plan cards driven by `GET /api/plans` sorted by tier; Hetzner server-type/spec line from providerSpec; benefits bullets from plan.benefits with an auto-added "you already have N credits" line from `GET /api/credits`; popular ribbon and select-then-subscribe interaction; `Subscribe` routes to Stripe via `POST /api/billing/checkout`; "plan not Stripe-configured" fallback; How-it-works + FAQ side cards
 - [x] `SubscribeButton.tsx` deleted (logic inlined into the new pricing page)
 
-### Members + Settings + Onboarding + Admin + Docs + Notifications 🔜 Stage 4
+### Members + Settings + Onboarding + Admin + Docs + Notifications ✅ Stage 4
 
-- [ ] Members — styled member list + Clerk invite flow
-- [ ] Settings — account, organization, notification prefs
-- [ ] Quickstart — guided pick-plan → deploy → connect-channel
-- [ ] Admin — plan and credit management (existing wiring, new chrome)
-- [ ] Docs — in-dashboard reference (markdown files already in `/docs`)
-- [ ] Notifications — full inbox view with filters and bulk actions
+- [x] Members — rebuilt against the design chrome; page head with admin/member count summary; Invite card with email + role select + "Send invite" action; members table with Clerk avatars (plain img), inline role select, and a row menu for promote/demote/remove; pending-invitations table with revoke. Wired to existing Clerk server actions.
+- [x] Settings — three-tab page (Account / Organization / Notifications) using segmented control. Account + Organization embed Clerk&rsquo;s `UserProfile` / `OrganizationProfile` with the dashboard palette. Notifications tab has toggles for billing / provisioning / weekly digest persisted to `cb:notif-prefs` localStorage until the backend preference API lands.
+- [x] Quickstart — 4-step checklist driven by real data: "Pick a plan" (checks credits), "Deploy your first assistant" (checks assistants list + status), "Connect from terminal" (shows the SSH tunnel command), "Call it from the SDK" (Python snippet). Links into `/pricing` and the list page; "Full docs" CTA in the header.
+- [x] Docs — design&rsquo;s docs-card grid across six topics (Quickstart, Access modes, CLI, SDK, Security, Versions). Help &amp; support card at the bottom. In-dashboard markdown rendering deferred to a later stage per the note in the page sub.
+- [x] Notifications — full inbox page with filter segment (All / Unread / Alerts), category dropdown, grouped buckets (Today / Yesterday / Earlier), mark-all-read + clear-all actions, empty state. Uses the same seed list as the bell until `/api/notifications` ships.
+- [x] Admin — kept its existing real-wired snapshot / plan / credit forms intact; only swapped the simple `<h1>` for the design&rsquo;s `.page__head` (page title + subtitle) so the chrome matches the rest of the dashboard.
 
 ### First-assistant wizard + Command palette 🔜 Stage 5
 

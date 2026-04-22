@@ -584,11 +584,29 @@ function CreditsPanel() {
 
 export default function AdminPage() {
   return (
-    <div className="space-y-10">
-      <h1 className="text-2xl font-bold">Admin</h1>
-      <SnapshotsPanel />
-      <PlansPanel />
-      <CreditsPanel />
+    <div>
+      <div className="page__head">
+        <div>
+          <h1 className="page__title">
+            Admin{" "}
+            <span
+              className="accent"
+              style={{ fontFamily: "var(--font-instrument-serif)" }}
+            >
+              console
+            </span>
+          </h1>
+          <div className="page__sub">
+            Platform-level operations. Snapshots, plans, and credits live here — only
+            visible to platform admins.
+          </div>
+        </div>
+      </div>
+      <div className="space-y-10">
+        <SnapshotsPanel />
+        <PlansPanel />
+        <CreditsPanel />
+      </div>
     </div>
   );
 }
