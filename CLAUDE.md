@@ -166,15 +166,15 @@ All tests must pass before a commit lands.
 
 ## Phase Status
 
-| Phase                               | Status      | Owner                                                                              |
-| ----------------------------------- | ----------- | ---------------------------------------------------------------------------------- |
-| 1 — Foundation                      | Complete    | All routes, schema, auth, RPC, tests                                               |
-| 2 — Provisioning                    | Complete    | Hetzner VPS, snapshot-based, useworkflow.dev                                       |
-| 3 — Dynamic DNS                     | Complete    | Cloudflare DNS, slug/FQDN helpers, regenerate-hostname endpoint                    |
-| 3.5 — Network Access Modes          | Complete    | ssh + tailscale_serve modes, per-assistant firewall, single SSH keypair            |
-| 4 — Dashboard (Tabbed Agent Detail) | Not started | Overview/Preview/Terminal/Logs/Versions/Files/Monitor/Storage/Server/Security tabs |
-| 5 — Billing                         | Not started | Stripe per-assistant subscriptions, real `canProvision()`                          |
-| 6 — Marketing + Onboarding          | Not started | Landing, pricing, onboarding polish                                                |
-| — Channel Setup Simplification      | Deferred    | Post-MVP; direct OpenClaw access for now                                           |
+| Phase                               | Status      | Owner                                                                                           |
+| ----------------------------------- | ----------- | ----------------------------------------------------------------------------------------------- |
+| 1 — Foundation                      | Complete    | All routes, schema, auth, RPC, tests                                                            |
+| 2 — Provisioning                    | Complete    | Hetzner VPS, snapshot-based, useworkflow.dev                                                    |
+| 3 — Dynamic DNS                     | Complete    | Cloudflare DNS, slug/FQDN helpers, regenerate-hostname endpoint                                 |
+| 3.5 — Network Access Modes          | Complete    | ssh + tailscale_serve modes, per-assistant firewall, single SSH keypair                         |
+| 4 — Dashboard (Tabbed Agent Detail) | Not started | Overview/Preview/Terminal/Logs/Versions/Files/Monitor/Storage/Server/Security tabs              |
+| 5 — Billing                         | Complete    | Stripe checkout/portal, per-agent subscriptions, invoices mirror, plan sync, webhook reconciler |
+| 6 — Marketing + Onboarding          | Not started | Landing, pricing, onboarding polish                                                             |
+| — Channel Setup Simplification      | Deferred    | Post-MVP; direct OpenClaw access for now                                                        |
 
 Cherry-picks from [bfzli/clawhost](https://github.com/bfzli/clawhost) (MIT) inform Phases 3 (cloud-init hardening) and 4 (dashboard IA, browser terminal). See individual phase docs for details.
