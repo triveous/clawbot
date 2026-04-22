@@ -36,6 +36,12 @@ export default function RootLayout({
       <html
         lang="en"
         className={`${geistSans.variable} ${geistMono.variable} ${instrumentSerif.variable} h-full antialiased`}
+        /* The pre-paint <ThemeInit> script inside the dashboard layout flips
+           the `dark` class on <html> from localStorage before React hydrates,
+           so the server and client class strings diverge for one render.
+           Suppressing the warning is the standard fix (next-themes does the
+           same) — React still hydrates; we're only silencing the noise. */
+        suppressHydrationWarning
       >
         <body className="min-h-full flex flex-col">{children}</body>
       </html>

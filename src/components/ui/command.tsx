@@ -60,7 +60,11 @@ function CommandDialog({
         )}
         showCloseButton={showCloseButton}
       >
-        {children}
+        {/* Wrap in <Command> so CommandPrimitive.Input / List / Item can
+            hook into the cmdk context. The shadcn-generated CommandDialog
+            omits this — without it, CommandInput throws at runtime because
+            it can't subscribe to the root's state. */}
+        <Command>{children}</Command>
       </DialogContent>
     </Dialog>
   )
