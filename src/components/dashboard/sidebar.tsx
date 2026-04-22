@@ -4,7 +4,6 @@ import Link from "next/link";
 import Image from "next/image";
 import { usePathname } from "next/navigation";
 import { OrganizationSwitcher, UserButton } from "@clerk/nextjs";
-import { flags } from "@/lib/flags";
 import { Icon, type IconName } from "./icon";
 
 type NavItem =
@@ -117,28 +116,26 @@ export function Sidebar({ orgId }: { orgId: string }) {
         <div className="tag">BETA</div>
       </div>
 
-      {flags.orgs ? (
-        <div className="orgswitch-wrap">
-          <OrganizationSwitcher
-            hidePersonal={false}
-            afterSelectOrganizationUrl="/dashboard/:id"
-            afterCreateOrganizationUrl="/dashboard/:id"
-            appearance={{
-              variables: {
-                colorBackground: "var(--card)",
-                colorText: "var(--foreground)",
-                colorPrimary: "var(--primary)",
-                borderRadius: "8px",
-                fontFamily: "var(--font-geist-sans)",
-              },
-              elements: {
-                rootBox: "orgswitch-clerk",
-                organizationSwitcherTrigger: "orgswitch",
-              },
-            }}
-          />
-        </div>
-      ) : null}
+      <div className="orgswitch-wrap">
+        <OrganizationSwitcher
+          hidePersonal={false}
+          afterSelectOrganizationUrl="/dashboard/:id"
+          afterCreateOrganizationUrl="/dashboard/:id"
+          appearance={{
+            variables: {
+              colorBackground: "var(--card)",
+              colorText: "var(--foreground)",
+              colorPrimary: "var(--primary)",
+              borderRadius: "8px",
+              fontFamily: "var(--font-geist-sans)",
+            },
+            elements: {
+              rootBox: "orgswitch-clerk",
+              organizationSwitcherTrigger: "orgswitch",
+            },
+          }}
+        />
+      </div>
 
       <nav className="nav">
         {NAV.map((item, idx) => {
