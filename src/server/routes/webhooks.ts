@@ -1,6 +1,4 @@
 import { Hono } from "hono";
+import { stripeWebhookRoute } from "./webhooks/stripe";
 
-export const webhooksRoute = new Hono();
-
-// Phase 4: Stripe webhook handler will be registered here
-// webhooksRoute.post("/stripe", stripeWebhookHandler);
+export const webhooksRoute = new Hono().route("/stripe", stripeWebhookRoute);

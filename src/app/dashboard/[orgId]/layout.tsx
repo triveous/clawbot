@@ -46,6 +46,9 @@ export default async function OrgLayout({
             <Link href={`/dashboard/${orgId}/credits`} className="rounded-md px-3 py-2 hover:bg-muted">
               Credits
             </Link>
+            <Link href={`/dashboard/${orgId}/billing`} className="rounded-md px-3 py-2 hover:bg-muted">
+              Billing
+            </Link>
             <Link href={`/dashboard/${orgId}/pricing`} className="rounded-md px-3 py-2 hover:bg-muted">
               Pricing
             </Link>

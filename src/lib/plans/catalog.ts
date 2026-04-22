@@ -1,4 +1,4 @@
-import { eq } from "drizzle-orm";
+import { eq, sql } from "drizzle-orm";
 import { db } from "@/lib/db";
 import { plans } from "@/lib/db/schema";
 import type { Plan } from "@/lib/db/schema";
@@ -36,6 +36,33 @@ export async function getPlan(planId: string): Promise<Plan | null> {
 
 export function invalidatePlanCache(): void {
   cache = null;
+}
+
+/**
+ * Look up a plan by its current Stripe price ID, falling back to historical
+ * (archived) price IDs so webhook events for past prices still resolve
+ * correctly after a price rotation.
+ */
+export async function getPlanByStripePriceId(
+  priceId: string,
+): Promise<Plan | null> {
+  const cached = cache?.plans.find((p) => {
+    const ids = p.billingProviderIds as Record<string, unknown>;
+    if (ids?.stripePriceId === priceId) return true;
+    const archived = ids?.archivedPriceIds;
+    return Array.isArray(archived) && archived.includes(priceId);
+  });
+  if (cached) return cached;
+
+  const [row] = await db
+    .select()
+    .from(plans)
+    .where(
+      sql`(${plans.billingProviderIds} ->> 'stripePriceId') = ${priceId}
+          OR (${plans.billingProviderIds} -> 'archivedPriceIds') ? ${priceId}`,
+    )
+    .limit(1);
+  return row ?? null;
 }
 
 export function getHetznerServerType(plan: Plan): string {

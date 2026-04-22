@@ -25,6 +25,9 @@ vi.mock("@/lib/db", () => ({
         findFirst: vi.fn(),
         findMany: vi.fn(),
       },
+      invoices: {
+        findMany: vi.fn().mockResolvedValue([]),
+      },
     },
     insert: vi.fn(),
   },
@@ -33,11 +36,6 @@ vi.mock("@/lib/db", () => ({
 // Mock providers (assistants routes import this)
 vi.mock("@/lib/providers", () => ({
   getProvider: vi.fn(),
-}));
-
-// Mock canProvision stub
-vi.mock("@/lib/stripe/stubs", () => ({
-  canProvision: vi.fn().mockResolvedValue(true),
 }));
 
 // Mock billing credits (imported by assistants route)
@@ -113,8 +111,8 @@ describe("Hono API — protected routes (unauthenticated)", () => {
     expect(res.status).toBe(401);
   });
 
-  it("GET /api/billing returns 401 without auth", async () => {
-    const res = await app.request("/api/billing");
+  it("GET /api/billing/invoices returns 401 without auth", async () => {
+    const res = await app.request("/api/billing/invoices");
     expect(res.status).toBe(401);
   });
 });
@@ -140,8 +138,8 @@ describe("Hono API — protected routes (user exists in DB)", () => {
     expect(res.status).toBe(200);
   });
 
-  it("GET /api/billing returns 200", async () => {
-    const res = await app.request("/api/billing");
+  it("GET /api/billing/invoices returns 200", async () => {
+    const res = await app.request("/api/billing/invoices");
     expect(res.status).toBe(200);
   });
 });
