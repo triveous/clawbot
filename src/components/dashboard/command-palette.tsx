@@ -106,6 +106,12 @@ export function CommandPalette({
       title="Command menu"
       description="Jump to a page, find an assistant, or trigger an action."
       showCloseButton={false}
+      // Override the shadcn defaults so the palette sits at the top-centre
+      // of the viewport per the design's .cmdk spec (12vh from top, 640px
+      // wide, capped to 92vw on narrow screens). The `!` modifiers force
+      // these over DialogContent's `top-1/2`, `-translate-y-1/2`, and
+      // `sm:max-w-sm`.
+      className="!top-[12vh] !-translate-y-0 !w-[min(640px,92vw)] !max-w-[min(640px,92vw)] sm:!max-w-[640px]"
     >
       <CommandInput placeholder="Type a command or search — assistants, billing, settings…" />
       <CommandList className="max-h-[420px]">
