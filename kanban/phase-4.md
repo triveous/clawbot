@@ -108,15 +108,17 @@ Built from the Claude Design handoff bundle (`clawbot-handoff`) — all surfaces
 | `--font-mono`      | `--font-geist-mono`                                             |
 | `--font-display`   | `--font-instrument-serif`                                       |
 
-### Assistants list + tabbed detail 🔜 Stage 2
+### Assistants list + tabbed detail ✅ Stage 2
 
-- [ ] `/dashboard/[orgId]` — assistants grid/table driven by `GET /api/assistants`; filter chips (All/Running/Provisioning/Error/Stopped); empty state for orgs with zero assistants; CTA opens first-assistant wizard (Stage 5)
-- [ ] `/dashboard/[orgId]/assistant/[id]` — tabbed detail: Overview, Preview, Terminal, Logs, Versions, Files, Monitor, Storage, Server, Security
-  - [ ] Overview — status, plan, region, provider, access mode, hostname, gateway token, SSH command, CPU sparkline (wired to `/:id/metrics`)
-  - [ ] Server — IPs, firewall allowed-IPs editor wired to `PATCH /:id/firewall`, danger zone (retry, delete) wired to existing routes
-  - [ ] Security — SSH key download wired to `/:id/ssh-key`, gateway token reveal/mask, allowed-IPs list
-  - [ ] Monitor — line chart fed by `/:id/metrics?type=cpu|disk|network&window=...`
-  - [ ] Preview / Terminal / Logs / Versions / Files / Storage — UI shipped, backends deferred per Phase 4e "Deferred" notes; UI should render a "coming soon" state inside the tab (per handoff instruction: don't remove the UI component even if the feature isn't wired yet)
+- [x] `/dashboard/[orgId]/page.tsx` — assistants table driven by `GET /api/assistants`; filter segment (All/Active/Provisioning/Error/Stopped); empty state with CTA to `/pricing`; credits summary; retry action wired to `POST /api/assistants/:id/retry`
+- [x] `/dashboard/[orgId]/assistant/[id]/page.tsx` — tabbed detail (Overview, Access, Connect, Monitor, Terminal, Logs, Files, Versions, Settings) with refresh + open-gateway actions
+- [x] `tabs/overview-tab.tsx` — provisioning step list, error callout, or active stat strip (CPU from real metrics API, Memory + Disk rendered from a preview trace until the metrics API adds those types) + Connect-to-Gateway card
+- [x] `tabs/access-tab.tsx` — SSH key download via `/api/assistants/:id/ssh-key`, allowed-IPs editor wired to `PATCH /api/assistants/:id/firewall`; Tailscale mode shows hostname + MagicDNS facts
+- [x] `tabs/connect-tab.tsx` — terminal and SDK snippets + gateway-token reveal/copy via `/api/assistants/:id/gateway-token`
+- [x] `tabs/metrics-tab.tsx` — LineChart wired to `/api/assistants/:id/metrics?type=cpu&window=...`; window segment (15m/1h/6h/24h/7d); memory/network/request-rate panes render preview traces until the metrics API exposes them
+- [x] `tabs/settings-tab.tsx` — retry (error state), identity facts, danger-zone delete with typed-name confirmation wired to `DELETE /api/assistants/:id`
+- [x] `tabs/stub-tabs.tsx` — Terminal / Logs / Files / Versions shells with the design&rsquo;s "coming soon" treatment (kept per handoff instruction: don&rsquo;t remove the UI component even if the feature isn&rsquo;t wired yet)
+- [x] `sidebar-facts.tsx` — shared plan/region/provider card + gateway-token card used by Overview
 
 ### Billing + Pricing 🔜 Stage 3
 

@@ -7,3 +7,5 @@ export { Field } from "./field";
 export { RowMenu, type RowMenuItem } from "./row-menu";
 export { Sparkline } from "./sparkline";
 export { LineChart, type ChartSeries } from "./line-chart";
+export { Segmented, type SegmentedOption } from "./segmented";
+export { EmptyStage } from "./empty-stage";
