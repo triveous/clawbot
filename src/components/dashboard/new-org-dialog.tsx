@@ -60,7 +60,10 @@ export function NewOrgDialog({
     setCreating(true);
     setError("");
     try {
-      const org = await createOrganization({ name: name.trim(), slug: slug || undefined });
+      // Clerk instances that don't have org slugs enabled reject the `slug`
+      // key. We keep the slug input as a UI-only preview and let Clerk
+      // auto-derive it (or skip it) based on instance settings.
+      const org = await createOrganization({ name: name.trim() });
       await setActive({ organization: org.id });
       onOpenChange(false);
       router.push(`/dashboard/${org.id}`);

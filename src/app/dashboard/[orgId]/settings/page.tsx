@@ -434,7 +434,15 @@ function OrganizationTab() {
     setError("");
     setSaved(false);
     try {
-      await organization.update({ name, slug: slug || undefined });
+      // Only send slug when the instance actually supports org slugs — an
+      // existing value on organization.slug means slugs are enabled. Clerk
+      // instances without the feature reject the key outright.
+      const payload: { name: string; slug?: string } = { name };
+      const supportsSlug = organization.slug != null;
+      if (supportsSlug && slug && slug !== organization.slug) {
+        payload.slug = slug;
+      }
+      await organization.update(payload);
       setSaved(true);
       setTimeout(() => setSaved(false), 2400);
     } catch (e) {
@@ -514,27 +522,46 @@ function OrganizationTab() {
 
         <div style={{ height: 12 }} />
 
-        <Field label="Slug" hint="Used in URLs and in hostnames of new assistants.">
-          <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
-            <span
-              className="faint mono"
-              style={{ fontSize: 12, whiteSpace: "nowrap" }}
+        {(() => {
+          // If the Clerk instance doesn't advertise a slug, slugs are
+          // disabled for this instance — show a greyed-out preview so the
+          // design reads right but the user can't try to save a value that
+          // Clerk would reject.
+          const slugsEnabled = organization.slug != null;
+          return (
+            <Field
+              label="Slug"
+              hint={
+                slugsEnabled
+                  ? "Used in URLs and in hostnames of new assistants."
+                  : "Org slugs are disabled for this Clerk instance. Enable them in the Clerk dashboard to change this."
+              }
             >
-              clawbot.dev/
-            </span>
-            <input
-              className="input"
-              value={slug}
-              onChange={(e) => {
-                setSlug(e.target.value.toLowerCase().replace(/[^a-z0-9-]/g, ""));
-                setSaved(false);
-                setError("");
-              }}
-              style={{ flex: 1 }}
-              placeholder="acme"
-            />
-          </div>
-        </Field>
+              <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
+                <span
+                  className="faint mono"
+                  style={{ fontSize: 12, whiteSpace: "nowrap" }}
+                >
+                  clawbot.dev/
+                </span>
+                <input
+                  className="input"
+                  value={slug}
+                  onChange={(e) => {
+                    setSlug(
+                      e.target.value.toLowerCase().replace(/[^a-z0-9-]/g, ""),
+                    );
+                    setSaved(false);
+                    setError("");
+                  }}
+                  style={{ flex: 1, opacity: slugsEnabled ? 1 : 0.6 }}
+                  placeholder="acme"
+                  readOnly={!slugsEnabled}
+                />
+              </div>
+            </Field>
+          );
+        })()}
 
         <div style={{ marginTop: 14, display: "flex", alignItems: "center", gap: 12 }}>
           <button
