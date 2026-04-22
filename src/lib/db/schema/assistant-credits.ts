@@ -9,6 +9,7 @@ import {
 import { organizations } from "./organizations";
 import { plans } from "./plans";
 import { assistants } from "./assistants";
+import { subscriptions } from "./subscriptions";
 
 export const creditStatusEnum = pgEnum("credit_status", [
   "incomplete",
@@ -31,6 +32,9 @@ export const assistantCredits = pgTable(
       .references(() => plans.id),
     status: creditStatusEnum("status").notNull().default("incomplete"),
     source: text("source").notNull().default("stripe"),
+    subscriptionId: uuid("subscription_id").references(() => subscriptions.id, {
+      onDelete: "set null",
+    }),
     externalSubscriptionId: text("external_subscription_id").unique(),
     currentPeriodStart: timestamp("current_period_start", {
       withTimezone: true,

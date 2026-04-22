@@ -3,6 +3,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import type { Plan } from "@/lib/db/schema";
+import { SubscribeButton } from "./SubscribeButton";
 
 function formatPrice(cents: number, currency: string) {
   return new Intl.NumberFormat("en-US", {
@@ -29,6 +30,8 @@ function ResourceLimits({ limits }: { limits: Record<string, number> }) {
 function PlanCard({ plan }: { plan: Plan }) {
   const benefits = plan.benefits as string[];
   const limits = plan.resourceLimits as Record<string, number>;
+  const billingIds = plan.billingProviderIds as { stripePriceId?: string };
+  const hasStripe = typeof billingIds?.stripePriceId === "string";
 
   return (
     <Card className="flex flex-col">
@@ -60,9 +63,13 @@ function PlanCard({ plan }: { plan: Plan }) {
         )}
         <ResourceLimits limits={limits} />
         <div className="mt-auto">
-          <Button className="w-full" disabled>
-            Coming soon
-          </Button>
+          {hasStripe ? (
+            <SubscribeButton planId={plan.id} />
+          ) : (
+            <Button className="w-full" disabled>
+              Not yet available
+            </Button>
+          )}
         </div>
       </CardContent>
     </Card>
@@ -77,7 +84,7 @@ export default async function PricingPage() {
       <div>
         <h1 className="text-2xl font-bold">Pricing</h1>
         <p className="mt-1 text-sm text-muted-foreground">
-          Checkout available in a future release.
+          One subscription = one assistant. Subscribe, then create the assistant.
         </p>
       </div>
 
