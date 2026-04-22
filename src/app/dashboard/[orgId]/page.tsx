@@ -2,7 +2,7 @@
 
 import { use, useCallback, useEffect, useMemo, useState } from "react";
 import Link from "next/link";
-import { useRouter } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
 import { useRpc } from "@/hooks/use-rpc";
 import {
   Icon,
@@ -74,6 +74,26 @@ export default function AssistantsPage({
   const [drawerOpen, setDrawerOpen] = useState(false);
   const [wizardOpen, setWizardOpen] = useState(false);
   const { organization } = useOrganization();
+  const searchParams = useSearchParams();
+
+  // When the command palette dispatches "Create assistant", it sends us
+  // here with `?create=1`. Pop the drawer for populated orgs, the wizard
+  // for empty ones; then strip the query so refreshes don't keep firing.
+  useEffect(() => {
+    if (searchParams?.get("create") !== "1") return;
+    // Decision between drawer (fast) vs wizard (immersive) happens below
+    // based on whether there are assistants. We wait until the initial load
+    // resolves, so this effect flips the right modal based on real state.
+    const target = assistants.length === 0 ? "wizard" : "drawer";
+    if (target === "wizard") {
+       
+      setWizardOpen(true);
+    } else {
+       
+      setDrawerOpen(true);
+    }
+    router.replace(`/dashboard/${orgId}`);
+  }, [searchParams, assistants.length, router, orgId]);
 
   const loadAll = useCallback(async () => {
     try {

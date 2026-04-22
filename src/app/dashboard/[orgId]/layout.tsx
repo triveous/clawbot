@@ -1,5 +1,4 @@
-import { Sidebar } from "@/components/dashboard/sidebar";
-import { Topbar } from "@/components/dashboard/topbar";
+import { DashboardShell } from "@/components/dashboard/dashboard-shell";
 import { ThemeInit } from "@/components/dashboard/theme-init";
 import "@/styles/dashboard/dashboard.css";
 import "@/styles/dashboard/first-assistant.css";
@@ -20,13 +19,7 @@ export default async function OrgLayout({
       <ThemeInit />
       <OrgActivator orgId={orgId} />
       <div className="dashboard-root">
-        <div className="app">
-          <Sidebar orgId={orgId} />
-          <main className="main">
-            <Topbar orgId={orgId} />
-            <div className="page">{children}</div>
-          </main>
-        </div>
+        <DashboardShell orgId={orgId}>{children}</DashboardShell>
       </div>
     </>
   );

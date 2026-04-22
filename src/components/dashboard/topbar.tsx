@@ -40,7 +40,13 @@ function deriveBreadcrumb(pathname: string, orgId: string): Crumb[] {
   }
 }
 
-export function Topbar({ orgId }: { orgId: string }) {
+export function Topbar({
+  orgId,
+  onOpenPalette,
+}: {
+  orgId: string;
+  onOpenPalette?: () => void;
+}) {
   const pathname = usePathname() ?? `/dashboard/${orgId}`;
   const bc = deriveBreadcrumb(pathname, orgId);
 
@@ -63,11 +69,16 @@ export function Topbar({ orgId }: { orgId: string }) {
         ))}
       </div>
       <div className="topbar__spacer" />
-      <div className="topbar__search" aria-label="Search — coming soon">
+      <button
+        type="button"
+        className="topbar__search"
+        onClick={() => onOpenPalette?.()}
+        aria-label="Open command palette"
+      >
         <Icon name="search" size={13} />
         <span>Search or jump to…</span>
         <span className="kbd">⌘K</span>
-      </div>
+      </button>
       <Link href={`/dashboard/${orgId}/docs`} className="topbar__icon" title="Help">
         <Icon name="help" size={16} />
       </Link>
