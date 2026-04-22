@@ -160,7 +160,7 @@ export default function MembersPage() {
         <div>
           <h1 className="page__title">
             Members{" "}
-            <span className="faint" style={{ fontSize: 20, fontWeight: 400 }}>
+            <span className="faint text-xl font-normal">
               {members.length}
             </span>
           </h1>
@@ -175,7 +175,7 @@ export default function MembersPage() {
       </div>
 
       {actionError ? (
-        <div style={{ marginBottom: 16 }}>
+        <div className="mb-4">
           <Callout kind="danger" icon="alert">
             {actionError}
           </Callout>
@@ -183,8 +183,8 @@ export default function MembersPage() {
       ) : null}
 
       <SectionCard title="Invite a teammate" sub="They'll get an email with a join link">
-        <div style={{ display: "flex", gap: 10, alignItems: "flex-end", flexWrap: "wrap" }}>
-          <div style={{ flex: "1 1 280px", minWidth: 220 }}>
+        <div className="flex gap-2.5 items-end flex-wrap">
+          <div className="flex-[1_1_280px] min-w-[220px]">
             <Field label="Email">
               <input
                 type="email"
@@ -229,28 +229,25 @@ export default function MembersPage() {
           </button>
         </div>
         {inviteSuccess ? (
-          <div
-            className="faint"
-            style={{ color: "var(--success)", fontSize: 12, marginTop: 10 }}
-          >
+          <div className="faint text-[var(--success)] text-xs mt-2.5">
             {inviteSuccess}
           </div>
         ) : null}
         {inviteError ? (
-          <div className="field__err" style={{ marginTop: 10 }}>
+          <div className="field__err mt-2.5">
             {inviteError}
           </div>
         ) : null}
       </SectionCard>
 
-      <div style={{ marginTop: 20 }}>
+      <div className="mt-5">
         <SectionCard title="Members" sub={`${members.length} total`} pad={false}>
           {loading ? (
-            <div style={{ padding: 24, color: "var(--muted-foreground)", fontSize: 13 }}>
+            <div className="p-6 text-muted-foreground text-[13px]">
               Loading…
             </div>
           ) : members.length === 0 ? (
-            <div style={{ padding: 24, color: "var(--muted-foreground)", fontSize: 13 }}>
+            <div className="p-6 text-muted-foreground text-[13px]">
               No members.
             </div>
           ) : (
@@ -285,7 +282,7 @@ export default function MembersPage() {
                   return (
                     <tr key={m.membershipId}>
                       <td>
-                        <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
+                        <div className="flex items-center gap-3">
                           {m.imageUrl ? (
                             /* Clerk-hosted avatar — small (32px) and served
                                through img.clerk.com; no optimiser needed. */
@@ -295,11 +292,7 @@ export default function MembersPage() {
                               alt=""
                               width={32}
                               height={32}
-                              style={{
-                                borderRadius: "50%",
-                                display: "block",
-                                objectFit: "cover",
-                              }}
+                              className="rounded-full block object-cover"
                             />
                           ) : (
                             <div className="userchip__avatar">
@@ -308,12 +301,9 @@ export default function MembersPage() {
                           )}
                           <div>
                             {m.name ? (
-                              <div style={{ fontSize: 13, fontWeight: 500 }}>{m.name}</div>
+                              <div className="text-[13px] font-medium">{m.name}</div>
                             ) : null}
-                            <div
-                              className="faint"
-                              style={{ fontSize: 12, fontFamily: "var(--font-geist-mono)" }}
-                            >
+                            <div className="faint text-xs font-mono">
                               {m.identifier}
                             </div>
                           </div>
@@ -335,7 +325,7 @@ export default function MembersPage() {
                           </SelectContent>
                         </Select>
                       </td>
-                      <td style={{ textAlign: "right" }}>
+                      <td className="text-right">
                         <RowMenu items={menu} />
                       </td>
                     </tr>
@@ -348,7 +338,7 @@ export default function MembersPage() {
       </div>
 
       {invitations.length > 0 ? (
-        <div style={{ marginTop: 20 }}>
+        <div className="mt-5">
           <SectionCard
             title="Pending invitations"
             sub={`${invitations.length} waiting for a response`}
@@ -373,7 +363,7 @@ export default function MembersPage() {
                       </span>
                     </td>
                     <td className="dim">{formatDate(new Date(inv.createdAt).toISOString())}</td>
-                    <td style={{ textAlign: "right" }}>
+                    <td className="text-right">
                       <button
                         type="button"
                         className="btn btn--ghost btn--sm"

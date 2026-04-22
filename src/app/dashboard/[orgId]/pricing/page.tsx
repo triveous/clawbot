@@ -127,7 +127,7 @@ export default function PricingPage({
         <div>
           <h1 className="page__title">
             Buy a{" "}
-            <span className="accent" style={{ fontFamily: "var(--font-instrument-serif)" }}>
+            <span className="accent font-[var(--font-instrument-serif)]">
               subscription
             </span>
           </h1>
@@ -150,7 +150,7 @@ export default function PricingPage({
         </Callout>
       ) : (
         <>
-          <div className="grid4" style={{ gap: 18, marginBottom: 26 }}>
+          <div className="grid4 gap-[18px] mb-[26px]">
             {sortedPlans.map((p) => {
               const isSel = selected === p.id;
               const hetz = readHetznerSpec(p);
@@ -165,8 +165,7 @@ export default function PricingPage({
                   role="button"
                   tabIndex={0}
                   aria-pressed={isSel}
-                  className={`plan${p.popular ? " is-pop" : ""}${isSel && !p.popular ? " is-pop" : ""}`}
-                  style={{ cursor: "pointer", textAlign: "left" }}
+                  className={`plan cursor-pointer text-left${p.popular ? " is-pop" : ""}${isSel && !p.popular ? " is-pop" : ""}`}
                   onClick={() => setSelected(p.id)}
                   onKeyDown={(e) => {
                     if (e.key === "Enter" || e.key === " ") {
@@ -180,7 +179,7 @@ export default function PricingPage({
                   <div>
                     <div className="plan__name">{p.displayName}</div>
                     {p.tagline ? (
-                      <div style={{ fontSize: 13, color: "var(--db-text-dim)", marginTop: 3 }}>
+                      <div className="text-[13px] text-muted-foreground mt-[3px]">
                         {p.tagline}
                       </div>
                     ) : null}
@@ -193,13 +192,7 @@ export default function PricingPage({
                     <span className="unit">/mo</span>
                   </div>
 
-                  <div
-                    style={{
-                      height: 1,
-                      background: "var(--db-hair)",
-                      margin: "6px 0",
-                    }}
-                  />
+                  <div className="h-px bg-border my-1.5" />
 
                   <div className="plan__benefits">
                     {ownBenefits.map((b) => (
@@ -221,14 +214,7 @@ export default function PricingPage({
                   </div>
 
                   {!stripeReady ? (
-                    <div
-                      className="faint"
-                      style={{
-                        fontSize: 11,
-                        marginTop: 4,
-                        fontFamily: "var(--font-geist-mono)",
-                      }}
-                    >
+                    <div className="faint text-[11px] mt-1 font-mono">
                       Stripe price not configured — ask an admin.
                     </div>
                   ) : null}
@@ -259,7 +245,7 @@ export default function PricingPage({
           </div>
 
           {checkoutError ? (
-            <div style={{ marginBottom: 16 }}>
+            <div className="mb-4">
               <Callout kind="danger" icon="alert" title="Checkout failed">
                 {checkoutError}
               </Callout>
@@ -268,17 +254,9 @@ export default function PricingPage({
         </>
       )}
 
-      <div className="grid2" style={{ gap: 20 }}>
+      <div className="grid2 gap-5">
         <SectionCard title="How subscriptions work">
-          <div
-            className="col"
-            style={{
-              gap: 14,
-              fontSize: 13,
-              lineHeight: 1.6,
-              color: "var(--db-text-dim)",
-            }}
-          >
+          <div className="col gap-[14px] text-[13px] leading-[1.6] text-muted-foreground">
             {[
               [
                 "1",
@@ -296,25 +274,12 @@ export default function PricingPage({
                 " and the credit comes back to your pool, ready to attach to something else.",
               ],
             ].map(([n, strong, rest]) => (
-              <div key={n} style={{ display: "flex", gap: 12 }}>
-                <div
-                  style={{
-                    width: 24,
-                    height: 24,
-                    borderRadius: 999,
-                    background: "var(--db-red-dim)",
-                    color: "var(--db-red)",
-                    display: "grid",
-                    placeItems: "center",
-                    fontWeight: 700,
-                    flexShrink: 0,
-                    fontSize: 12,
-                  }}
-                >
+              <div key={n} className="flex gap-3">
+                <div className="w-6 h-6 rounded-full bg-primary/15 text-primary grid place-items-center font-bold shrink-0 text-xs">
                   {n}
                 </div>
                 <div>
-                  <b style={{ color: "var(--db-text)" }}>{strong}</b>
+                  <b className="text-foreground">{strong}</b>
                   {rest}
                 </div>
               </div>
@@ -323,7 +288,7 @@ export default function PricingPage({
         </SectionCard>
 
         <SectionCard title="FAQ">
-          <div className="col" style={{ gap: 14, fontSize: 13 }}>
+          <div className="col gap-[14px] text-[13px]">
             {[
               [
                 "Can I mix tiers?",
@@ -339,8 +304,8 @@ export default function PricingPage({
               ],
             ].map(([q, a]) => (
               <div key={q}>
-                <div style={{ fontWeight: 500, marginBottom: 3 }}>{q}</div>
-                <div className="dim" style={{ fontSize: 12, lineHeight: 1.6 }}>
+                <div className="font-medium mb-[3px]">{q}</div>
+                <div className="dim text-xs leading-[1.6]">
                   {a}
                 </div>
               </div>

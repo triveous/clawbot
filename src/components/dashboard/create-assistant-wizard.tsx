@@ -312,7 +312,7 @@ export function CreateAssistantWizard({
       <div className="faw__content">
         <div className="faw__form">
           {loadingMeta ? (
-            <div className="faint" style={{ padding: 40, fontSize: 13 }}>
+            <div className="faint p-10 text-[13px]">
               Loading plans…
             </div>
           ) : plans.length === 0 ? (
@@ -377,7 +377,7 @@ export function CreateAssistantWizard({
           </div>
 
           {deployError ? (
-            <div className="field__err" style={{ marginTop: 10 }}>
+            <div className="field__err mt-2.5">
               {deployError}
             </div>
           ) : null}
@@ -601,7 +601,7 @@ function StepAccess({
             disabled={!r.available}
           >
             <div className="faw__region-flag">{r.flag}</div>
-            <div style={{ flex: 1, textAlign: "left" }}>
+            <div className="flex-1 text-left">
               <div className="faw__region-name">{r.label}</div>
               <div className="faw__region-sub">
                 {r.country} · {r.code}
@@ -612,7 +612,7 @@ function StepAccess({
         ))}
       </div>
 
-      <div className="faw__section-h" style={{ marginTop: 20 }}>
+      <div className="faw__section-h mt-5">
         Access mode
       </div>
       <div className="faw__access">
@@ -636,7 +636,7 @@ function StepAccess({
             <div className="faw__access-ico">
               <Icon name={icon} size={16} />
             </div>
-            <div style={{ flex: 1 }}>
+            <div className="flex-1">
               <div className="faw__access-label">{label}</div>
               <div className="faw__access-desc">{desc}</div>
             </div>
@@ -648,7 +648,7 @@ function StepAccess({
       </div>
 
       {access === "ssh" ? (
-        <div style={{ marginTop: 16 }}>
+        <div className="mt-4">
           <div className="faw__section-h">Allowed IPs (CIDR, comma-separated)</div>
           <input
             className="input"
@@ -656,21 +656,20 @@ function StepAccess({
             onChange={(e) => setSshAllowedIps(e.target.value)}
             placeholder="0.0.0.0/0"
           />
-          <div className="faint" style={{ fontSize: 12, marginTop: 6 }}>
+          <div className="faint text-xs mt-1.5">
             0.0.0.0/0 allows anywhere. Narrow this down if you can.
           </div>
         </div>
       ) : (
-        <div style={{ marginTop: 16 }}>
+        <div className="mt-4">
           <div className="faw__section-h">Tailscale auth key</div>
-          <div style={{ display: "flex", gap: 8 }}>
+          <div className="flex gap-2">
             <input
-              className="input"
+              className="input flex-1"
               type="password"
               placeholder="tskey-auth-…"
               value={tailscaleKey}
               onChange={(e) => setTailscaleKey(e.target.value)}
-              style={{ flex: 1 }}
             />
             <button
               type="button"
@@ -683,7 +682,7 @@ function StepAccess({
             </button>
           </div>
           {tsError ? <div className="field__err">{tsError}</div> : null}
-          <div className="faint" style={{ fontSize: 12, marginTop: 6 }}>
+          <div className="faint text-xs mt-1.5">
             Ephemeral reusable key. Verified once, never stored.
           </div>
         </div>
@@ -719,7 +718,7 @@ function PreviewCard({
           <div className="faw__pv-icon">
             <Icon name="bot" size={18} />
           </div>
-          <div style={{ flex: 1, minWidth: 0 }}>
+          <div className="flex-1 min-w-0">
             <div className={`faw__pv-name${isPlaceholder ? " is-placeholder" : ""}`}>{name}</div>
             <div className="faw__pv-host">{hostname}</div>
           </div>
@@ -732,7 +731,7 @@ function PreviewCard({
             {step >= 1 && plan ? (
               <>
                 {plan.displayName}
-                <span className="faint" style={{ marginLeft: 6 }}>
+                <span className="faint ml-1.5">
                   {formatPrice(plan.priceCents, plan.currency)}/mo
                 </span>
               </>
@@ -792,12 +791,12 @@ function PreviewCard({
             <div className="faw__pv-term-prompt">
               {access === "ssh" ? (
                 <>
-                  <span style={{ color: "var(--db-red)" }}>$</span> ssh root@
+                  <span className="text-primary">$</span> ssh root@
                   <span className="faw__pv-term-host">{hostname}</span>
                 </>
               ) : (
                 <>
-                  <span style={{ color: "var(--db-red)" }}>→</span> https://
+                  <span className="text-primary">→</span> https://
                   <span className="faw__pv-term-host">{name}.tail-scale.ts.net</span>
                 </>
               )}
@@ -828,83 +827,48 @@ function NeedCreditModal({
   return (
     <>
       <div className="cmdk-scrim" onClick={onClose} />
-      <div className="modal" style={{ width: 460, padding: 28 }} role="dialog" aria-modal>
-        <div
-          style={{
-            width: 44,
-            height: 44,
-            margin: "0 auto 14px",
-            borderRadius: "50%",
-            background: "color-mix(in oklab, var(--db-red) 15%, transparent)",
-            color: "var(--db-red)",
-            display: "grid",
-            placeItems: "center",
-          }}
-        >
+      <div className="modal w-[460px] p-7" role="dialog" aria-modal>
+        <div className="w-11 h-11 mx-auto mb-[14px] rounded-full bg-primary/15 text-primary grid place-items-center">
           <Icon name="creditCard" size={22} />
         </div>
-        <div
-          style={{
-            textAlign: "center",
-            fontSize: 20,
-            fontWeight: 500,
-            marginBottom: 6,
-            fontFamily: "var(--font-instrument-serif)",
-          }}
-        >
+        <div className="text-center text-xl font-medium mb-1.5 font-[var(--font-instrument-serif)]">
           You don&rsquo;t have a credit for this plan
         </div>
-        <div
-          className="faint"
-          style={{ textAlign: "center", fontSize: 13, marginBottom: 20, lineHeight: 1.55 }}
-        >
+        <div className="faint text-center text-[13px] mb-5 leading-[1.55]">
           You picked <b>{plan.displayName}</b> ({formatPrice(plan.priceCents, plan.currency)}/mo),
           but no active credit is available for it. Head to Pricing to activate a subscription —
           your assistant will deploy as soon as the credit arrives.
         </div>
 
-        <div
-          style={{
-            display: "flex",
-            justifyContent: "space-between",
-            alignItems: "center",
-            background: "var(--db-surface-2)",
-            border: "1px solid var(--db-hair)",
-            borderRadius: 10,
-            padding: "12px 14px",
-            marginBottom: 20,
-            fontSize: 13,
-          }}
-        >
+        <div className="flex justify-between items-center bg-muted border border-border rounded-[10px] px-[14px] py-3 mb-5 text-[13px]">
           <div>
-            <div style={{ fontWeight: 600 }}>
+            <div className="font-semibold">
               {plan.displayName}{" "}
-              <span className="faint" style={{ fontWeight: 400 }}>
+              <span className="faint font-normal">
                 credit
               </span>
             </div>
-            <div className="faint" style={{ fontSize: 11, marginTop: 2 }}>
+            <div className="faint text-[11px] mt-0.5">
               {plan.tagline ?? "monthly subscription"}
             </div>
           </div>
-          <div style={{ textAlign: "right" }}>
-            <div className="mono" style={{ fontWeight: 600 }}>
+          <div className="text-right">
+            <div className="mono font-semibold">
               {formatPrice(plan.priceCents, plan.currency)}
-              <span className="faint" style={{ fontWeight: 400 }}>
+              <span className="faint font-normal">
                 /mo
               </span>
             </div>
-            <div className="faint" style={{ fontSize: 11, marginTop: 2 }}>
+            <div className="faint text-[11px] mt-0.5">
               Billed monthly · cancel anytime
             </div>
           </div>
         </div>
 
-        <div style={{ display: "flex", gap: 8 }}>
+        <div className="flex gap-2">
           <button
             type="button"
-            className="btn btn--ghost"
-            style={{ flex: 1, justifyContent: "center" }}
+            className="btn btn--ghost flex-1 justify-center"
             onClick={onClose}
           >
             Cancel
@@ -912,8 +876,7 @@ function NeedCreditModal({
           <Link
             href={`/dashboard/${_orgId}/pricing`}
             onClick={onNavigate}
-            className="btn btn--primary"
-            style={{ flex: 2, justifyContent: "center" }}
+            className="btn btn--primary flex-[2] justify-center"
           >
             <Icon name="tag" size={14} />
             Go to pricing
@@ -1095,16 +1058,13 @@ function DeployingScene({
           </ol>
 
           {state === "pending" ? (
-            <div
-              className="faint"
-              style={{ marginTop: 14, fontSize: 12, lineHeight: 1.5, maxWidth: 380 }}
-            >
+            <div className="faint mt-[14px] text-xs leading-[1.5] max-w-[380px]">
               This usually takes 2&ndash;3 minutes. You can wait here, or head back and we&rsquo;ll
               surface it in the notifications bell when your assistant is ready.
             </div>
           ) : null}
 
-          <div style={{ marginTop: 20, display: "flex", gap: 8, flexWrap: "wrap" }}>
+          <div className="mt-5 flex gap-2 flex-wrap">
             {state === "ready" ? (
               <button type="button" className="fa-hero__primary" onClick={onOpenAssistant}>
                 <Icon name="arrowRight" size={14} />
@@ -1134,7 +1094,7 @@ function DeployingScene({
           </div>
 
           {errorMsg ? (
-            <div className="field__err" style={{ marginTop: 12, maxWidth: 440 }}>
+            <div className="field__err mt-3 max-w-[440px]">
               {errorMsg}
             </div>
           ) : null}
@@ -1161,11 +1121,11 @@ function DeployingScene({
                   <span className="fa-hero__caret" />
                 </div>
               ) : state === "ready" ? (
-                <div className="deploy__term-line" style={{ color: "var(--success)" }}>
+                <div className="deploy__term-line text-[var(--success)]">
                   [ok] assistant online · gateway reachable
                 </div>
               ) : (
-                <div className="deploy__term-line" style={{ color: "var(--destructive)" }}>
+                <div className="deploy__term-line text-destructive">
                   [err] provisioning failed — open the detail page for logs
                 </div>
               )}

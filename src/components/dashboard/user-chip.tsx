@@ -50,9 +50,9 @@ export function UserChip({
 
   if (!isLoaded) {
     return (
-      <div className="userchip" style={{ cursor: "default" }}>
+      <div className="userchip cursor-default">
         <div className="userchip__avatar" />
-        <div style={{ flex: 1, minWidth: 0 }}>
+        <div className="flex-1 min-w-0">
           <div className="userchip__name">Loading…</div>
         </div>
       </div>
@@ -71,8 +71,7 @@ export function UserChip({
     <img
       src={user.imageUrl}
       alt=""
-      className="userchip__avatar"
-      style={{ objectFit: "cover" }}
+      className="userchip__avatar object-cover"
     />
   ) : (
     <div className="userchip__avatar">{initialsText}</div>
@@ -81,8 +80,7 @@ export function UserChip({
   return (
     <div
       ref={rootRef}
-      className="userchip"
-      style={{ position: "relative", cursor: "pointer" }}
+      className="userchip relative cursor-pointer"
       onClick={() => setOpen((v) => !v)}
       role="button"
       tabIndex={0}
@@ -95,7 +93,7 @@ export function UserChip({
       }}
     >
       {avatarNode}
-      <div style={{ flex: 1, minWidth: 0 }}>
+      <div className="flex-1 min-w-0">
         <div className="userchip__name">{displayName}</div>
         {email && email !== displayName ? (
           <div className="userchip__mail">{email}</div>
@@ -107,43 +105,17 @@ export function UserChip({
 
       {open ? (
         <div
-          className="orgmenu"
+          className="orgmenu bottom-[calc(100%+6px)] top-auto left-2 right-2"
           onClick={(e) => e.stopPropagation()}
-          style={{ bottom: "calc(100% + 6px)", top: "auto", left: 8, right: 8 }}
         >
-          <div
-            style={{
-              padding: "10px 12px 8px",
-              display: "flex",
-              alignItems: "center",
-              gap: 10,
-              borderBottom: "1px solid var(--db-hair)",
-            }}
-          >
+          <div className="px-3 pt-2.5 pb-2 flex items-center gap-2.5 border-b border-border">
             {avatarNode}
-            <div style={{ minWidth: 0, flex: 1 }}>
-              <div
-                style={{
-                  fontSize: 13,
-                  fontWeight: 500,
-                  color: "var(--db-text)",
-                  whiteSpace: "nowrap",
-                  overflow: "hidden",
-                  textOverflow: "ellipsis",
-                }}
-              >
+            <div className="min-w-0 flex-1">
+              <div className="text-[13px] font-medium text-foreground truncate">
                 {displayName}
               </div>
               {email ? (
-                <div
-                  style={{
-                    fontSize: 11,
-                    color: "var(--db-text-faint)",
-                    whiteSpace: "nowrap",
-                    overflow: "hidden",
-                    textOverflow: "ellipsis",
-                  }}
-                >
+                <div className="text-[11px] text-muted-foreground/70 truncate">
                   {email}
                 </div>
               ) : null}
@@ -155,14 +127,7 @@ export function UserChip({
             className="orgmenu__item"
             onClick={() => setOpen(false)}
           >
-            <div
-              className="orgmenu__avatar"
-              style={{
-                background: "var(--db-surface-2)",
-                color: "var(--db-text-dim)",
-                border: "1px solid var(--db-hair)",
-              }}
-            >
+            <div className="orgmenu__avatar bg-muted text-muted-foreground border border-border">
               <Icon name="settings" size={12} />
             </div>
             Account settings
@@ -176,17 +141,10 @@ export function UserChip({
                 onOpenPalette();
               }}
             >
-              <div
-                className="orgmenu__avatar"
-                style={{
-                  background: "var(--db-surface-2)",
-                  color: "var(--db-text-dim)",
-                  border: "1px solid var(--db-hair)",
-                }}
-              >
+              <div className="orgmenu__avatar bg-muted text-muted-foreground border border-border">
                 <Icon name="search" size={12} />
               </div>
-              <div style={{ flex: 1 }}>Command menu</div>
+              <div className="flex-1">Command menu</div>
               <span className="kbd">⌘K</span>
             </div>
           ) : null}
@@ -194,14 +152,13 @@ export function UserChip({
           <div className="orgmenu__divider" />
 
           <div
-            className="orgmenu__item"
+            className="orgmenu__item text-primary"
             onClick={() =>
               void signOut(() => {
                 setOpen(false);
                 router.push("/login");
               })
             }
-            style={{ color: "var(--db-red)" }}
           >
             <div
               className="orgmenu__avatar"

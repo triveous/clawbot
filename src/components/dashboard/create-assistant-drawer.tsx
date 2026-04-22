@@ -211,7 +211,7 @@ export function CreateAssistantDrawer({
             <div className="drawer__title">New assistant</div>
             <div className="card__sub">Spin up a fresh OpenClaw VPS</div>
           </div>
-          <div style={{ flex: 1 }} />
+          <div className="flex-1" />
           <button type="button" className="btn btn--ghost btn--sm" onClick={onClose} aria-label="Close">
             <Icon name="x" size={14} />
           </button>
@@ -219,7 +219,7 @@ export function CreateAssistantDrawer({
 
         <div className="drawer__body">
           {loadingMeta ? (
-            <div className="faint" style={{ fontSize: 13 }}>
+            <div className="faint text-[13px]">
               Loading plans…
             </div>
           ) : plans.length === 0 ? (
@@ -227,7 +227,7 @@ export function CreateAssistantDrawer({
               Ask an admin to create a plan from the Admin console before you can deploy.
             </Callout>
           ) : (
-            <div className="col" style={{ gap: 18 }}>
+            <div className="col gap-[18px]">
               <Field
                 label="Name"
                 hint="Used as hostname slug. Lowercase letters, numbers, hyphens."
@@ -242,7 +242,7 @@ export function CreateAssistantDrawer({
               </Field>
 
               <Field label="Plan">
-                <div className="col" style={{ gap: 8 }}>
+                <div className="col gap-2">
                   {plans.map((p) => {
                     const selected = planId === p.id;
                     const credits = availableByPlan.get(p.id) ?? 0;
@@ -252,53 +252,30 @@ export function CreateAssistantDrawer({
                         type="button"
                         key={p.id}
                         onClick={() => setPlanId(p.id)}
-                        className="plan-pick"
-                        style={{
-                          padding: "10px 14px",
-                          border: `1px solid ${selected ? "var(--db-red)" : "var(--db-hair)"}`,
-                          borderRadius: 8,
-                          cursor: "pointer",
-                          display: "flex",
-                          alignItems: "center",
-                          gap: 12,
-                          background: selected ? "var(--db-red-dim)" : "transparent",
-                          textAlign: "left",
-                          font: "inherit",
-                          color: "inherit",
-                        }}
+                        className={`plan-pick px-3.5 py-2.5 border rounded-lg cursor-pointer flex items-center gap-3 text-left font-[inherit] text-[color:inherit] ${selected ? "border-primary bg-primary/15" : "border-border bg-transparent"}`}
                       >
                         <div
+                          className="w-[14px] h-[14px] rounded-full shrink-0"
                           style={{
-                            width: 14,
-                            height: 14,
-                            borderRadius: 999,
                             border: `2px solid ${selected ? "var(--db-red)" : "var(--db-hair-strong)"}`,
                             background: selected ? "var(--db-red)" : "transparent",
                             boxShadow: selected ? "inset 0 0 0 3px var(--db-bg-2)" : "none",
-                            flexShrink: 0,
                           }}
                         />
-                        <div style={{ flex: 1, minWidth: 0 }}>
-                          <div style={{ fontWeight: 500, fontSize: 13 }}>{p.displayName}</div>
+                        <div className="flex-1 min-w-0">
+                          <div className="font-medium text-[13px]">{p.displayName}</div>
                           <div className="mono faint">
                             {hetz
                               ? `${hetz.cpu ?? "—"} · ${hetz.mem ?? "—"} · ${hetz.disk ?? "—"}`
                               : (p.tagline ?? "—")}
                           </div>
                         </div>
-                        <div style={{ textAlign: "right" }}>
-                          <div style={{ fontFamily: "var(--font-geist-mono)", fontSize: 12 }}>
+                        <div className="text-right">
+                          <div className="font-mono text-xs">
                             {formatPrice(p.priceCents, p.currency)}
                             <span className="faint">/mo</span>
                           </div>
-                          <div
-                            className="faint"
-                            style={{
-                              fontSize: 10,
-                              fontFamily: "var(--font-geist-mono)",
-                              marginTop: 2,
-                            }}
-                          >
+                          <div className="faint text-[10px] font-mono mt-0.5">
                             {credits > 0 ? `${credits} credit${credits > 1 ? "s" : ""}` : "no credit"}
                           </div>
                         </div>
@@ -307,7 +284,7 @@ export function CreateAssistantDrawer({
                   })}
                 </div>
                 {!selectedPlanHasCredit && selectedPlan ? (
-                  <div className="field__err" style={{ marginTop: 6 }}>
+                  <div className="field__err mt-1.5">
                     You have no available credit on {selectedPlan.displayName}. Buy one from
                     Pricing.
                   </div>
@@ -371,9 +348,9 @@ export function CreateAssistantDrawer({
                   hint="Ephemeral reusable key. Verified once, never stored."
                   err={tsError || undefined}
                 >
-                  <div style={{ display: "flex", gap: 8 }}>
+                  <div className="flex gap-2">
                     <input
-                      className="input"
+                      className="input flex-1"
                       type="password"
                       placeholder="tskey-auth-…"
                       value={tailscaleAuthKey}
@@ -382,7 +359,6 @@ export function CreateAssistantDrawer({
                         setTsVerified(false);
                         setTsError("");
                       }}
-                      style={{ flex: 1 }}
                     />
                     <button
                       type="button"

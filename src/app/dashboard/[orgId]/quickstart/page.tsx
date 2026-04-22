@@ -23,11 +23,11 @@ function connectStepBody(running: Assistant | undefined): ReactNode {
   if (!running) {
     return (
       <>
-        <div style={{ marginBottom: 10 }}>
+        <div className="mb-2.5">
           Once your assistant is live, this step shows the exact command or URL for
           connecting — it depends on the access mode you picked at deploy time:
         </div>
-        <ul style={{ margin: "0 0 10px 18px", fontSize: 13, lineHeight: 1.6 }}>
+        <ul className="ml-[18px] mb-2.5 text-[13px] leading-[1.6]">
           <li>
             <b>SSH tunnel</b> — run a one-liner locally, then open{" "}
             <span className="mono">http://localhost:8888</span>.
@@ -48,14 +48,14 @@ function connectStepBody(running: Assistant | undefined): ReactNode {
     const port = running.gatewayPort ?? 8443;
     return (
       <>
-        <div style={{ marginBottom: 10 }}>
+        <div className="mb-2.5">
           Tunnel into the gateway on <span className="mono">{running.name}</span> using the SSH
           private key you downloaded from the Access tab.
         </div>
         <CodeBlock code={`chmod 400 ${keyFile}`} />
-        <div style={{ height: 8 }} />
+        <div className="h-2" />
         <CodeBlock code={`ssh -i ${keyFile} -N -L 8888:localhost:${port} root@${ip}`} />
-        <div className="faint" style={{ fontSize: 12, marginTop: 8 }}>
+        <div className="faint text-xs mt-2">
           Keep the tunnel open and point your client at{" "}
           <span className="mono">http://localhost:8888</span>.
         </div>
@@ -67,14 +67,14 @@ function connectStepBody(running: Assistant | undefined): ReactNode {
   const hostname = running.hostname ?? `${slugifyAssistantName(running.name)}.tail-scale.ts.net`;
   return (
     <>
-      <div style={{ marginBottom: 10 }}>
+      <div className="mb-2.5">
         <span className="mono">{running.name}</span> is served over Tailscale Serve — no public
         ports, no tunnel. Join your tailnet, then hit the assistant&rsquo;s hostname directly.
       </div>
       <CodeBlock code="tailscale up" />
-      <div style={{ height: 8 }} />
+      <div className="h-2" />
       <CodeBlock prompt="→" code={`https://${hostname}`} />
-      <div className="faint" style={{ fontSize: 12, marginTop: 8 }}>
+      <div className="faint text-xs mt-2">
         Tailscale Serve terminates TLS and authenticates from your tailnet identity — no gateway
         token needed in the browser.
       </div>
@@ -161,7 +161,7 @@ export default function QuickstartPage({
         <div className="faint">You have a credit ready.</div>
       ) : (
         <>
-          <div style={{ marginBottom: 10 }}>
+          <div className="mb-2.5">
             Subscriptions = credits. One credit runs one assistant.
           </div>
           <Link href={`/dashboard/${orgId}/pricing`} className="btn btn--primary btn--sm">
@@ -194,7 +194,7 @@ export default function QuickstartPage({
           </div>
         ) : (
           <>
-            <div style={{ marginBottom: 10 }}>
+            <div className="mb-2.5">
               Your assistant is provisioning. It usually takes 2&ndash;3 minutes.
             </div>
             <Link href={`/dashboard/${orgId}`} className="btn btn--ghost btn--sm">
@@ -205,7 +205,7 @@ export default function QuickstartPage({
         )
       ) : (
         <>
-          <div style={{ marginBottom: 10 }}>
+          <div className="mb-2.5">
             Open the assistants page and click <b>New assistant</b> (or take the immersive wizard
             from the empty state).
           </div>
@@ -228,7 +228,7 @@ export default function QuickstartPage({
       title: "Call it from the SDK",
       body: (
         <>
-          <div style={{ marginBottom: 10 }}>
+          <div className="mb-2.5">
             Use your gateway token (reveal it on the assistant&rsquo;s Connect tab) with the
             OpenClaw SDK.
           </div>
@@ -255,7 +255,7 @@ print(reply)`}
         <div>
           <h1 className="page__title">
             Quickstart{" "}
-            <span className="accent" style={{ fontFamily: "var(--font-instrument-serif)" }}>
+            <span className="accent font-[var(--font-instrument-serif)]">
               in 4 steps
             </span>
           </h1>
@@ -272,7 +272,7 @@ print(reply)`}
       </div>
 
       {loading ? null : (
-        <div className="col" style={{ gap: 16 }}>
+        <div className="col gap-4">
           {!availableCredit && !hasAssistant ? (
             <Callout kind="info" icon="info" title="You don't have any credits yet">
               The first step below walks you through buying one.
@@ -281,15 +281,10 @@ print(reply)`}
 
           {steps.map((s) => (
             <SectionCard key={s.title}>
-              <div style={{ display: "flex", gap: 16, alignItems: "flex-start" }}>
+              <div className="flex gap-4 items-start">
                 <div
+                  className="w-9 h-9 rounded-[10px] shrink-0 grid place-items-center"
                   style={{
-                    width: 36,
-                    height: 36,
-                    borderRadius: 10,
-                    flexShrink: 0,
-                    display: "grid",
-                    placeItems: "center",
                     background:
                       s.state === "done"
                         ? "color-mix(in oklab, var(--success) 16%, transparent)"
@@ -306,28 +301,22 @@ print(reply)`}
                 >
                   <Icon name={s.state === "done" ? "check" : s.icon} size={16} />
                 </div>
-                <div style={{ flex: 1, minWidth: 0 }}>
+                <div className="flex-1 min-w-0">
                   <div
-                    style={{
-                      fontSize: 15,
-                      fontWeight: 600,
-                      marginBottom: 8,
-                      color:
-                        s.state === "pending" ? "var(--muted-foreground)" : "var(--foreground)",
-                    }}
+                    className={`text-[15px] font-semibold mb-2 ${s.state === "pending" ? "text-muted-foreground" : "text-foreground"}`}
                   >
                     {s.title}
                     {s.state === "done" ? (
-                      <span className="pill pill--active" style={{ marginLeft: 10 }}>
+                      <span className="pill pill--active ml-2.5">
                         Done
                       </span>
                     ) : s.state === "current" ? (
-                      <span className="pill pill--info" style={{ marginLeft: 10 }}>
+                      <span className="pill pill--info ml-2.5">
                         Next
                       </span>
                     ) : null}
                   </div>
-                  <div style={{ fontSize: 13, lineHeight: 1.6 }}>{s.body}</div>
+                  <div className="text-[13px] leading-[1.6]">{s.body}</div>
                 </div>
               </div>
             </SectionCard>

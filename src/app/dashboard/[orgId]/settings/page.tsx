@@ -37,24 +37,6 @@ export default function SettingsPage() {
 
   return (
     <div>
-      <style>{`
-        .section-heading {
-          display: flex;
-          align-items: center;
-          gap: 10px;
-          margin: 24px 2px 6px;
-          font-size: 11px;
-          font-weight: 600;
-          letter-spacing: 0.08em;
-          text-transform: uppercase;
-          color: var(--destructive);
-        }
-        .section-heading__rule {
-          flex: 1;
-          height: 1px;
-          background: color-mix(in oklab, var(--destructive) 30%, transparent);
-        }
-      `}</style>
       <div className="page__head">
         <div>
           <h1 className="page__title">Settings</h1>
@@ -105,10 +87,7 @@ export default function SettingsPage() {
 
 function LoadingBlock({ label }: { label: string }) {
   return (
-    <div
-      className="faint"
-      style={{ padding: "40px 0", textAlign: "center", fontSize: 13 }}
-    >
+    <div className="faint py-10 text-center text-[13px]">
       {label}
     </div>
   );
@@ -183,28 +162,22 @@ function AccountTab() {
   }
 
   return (
-    <div className="col" style={{ gap: 16 }}>
+    <div className="col gap-4">
       <SectionCard title="Profile" sub="Your name and avatar appear on every comment and audit entry">
-        <div style={{ display: "flex", alignItems: "center", gap: 16, marginBottom: 20 }}>
+        <div className="flex items-center gap-4 mb-5">
           {/* eslint-disable-next-line @next/next/no-img-element */}
           <img
             src={user.imageUrl}
             alt=""
             width={72}
             height={72}
-            style={{
-              width: 72,
-              height: 72,
-              borderRadius: "50%",
-              objectFit: "cover",
-              border: "1px solid var(--db-hair)",
-            }}
+            className="w-[72px] h-[72px] rounded-full object-cover border border-border"
           />
-          <div style={{ flex: 1 }}>
-            <div style={{ fontSize: 13, fontWeight: 500 }}>
+          <div className="flex-1">
+            <div className="text-[13px] font-medium">
               {user.fullName ?? primaryEmail ?? "Your profile photo"}
             </div>
-            <div className="faint" style={{ fontSize: 12, marginTop: 2 }}>
+            <div className="faint text-xs mt-0.5">
               PNG or JPG, square-crop works best.
             </div>
           </div>
@@ -214,14 +187,14 @@ function AccountTab() {
             <input
               type="file"
               accept="image/png,image/jpeg"
-              style={{ display: "none" }}
+              className="hidden"
               onChange={onAvatarPick}
               disabled={uploading}
             />
           </label>
         </div>
 
-        <div className="grid2" style={{ gap: 14 }}>
+        <div className="grid2 gap-[14px]">
           <Field label="First name">
             <input
               className="input"
@@ -252,7 +225,7 @@ function AccountTab() {
           </Field>
         </div>
 
-        <div style={{ marginTop: 14, display: "flex", alignItems: "center", gap: 12 }}>
+        <div className="mt-[14px] flex items-center gap-3">
           <button
             type="button"
             className="btn btn--primary"
@@ -263,12 +236,12 @@ function AccountTab() {
             {saving ? "Saving…" : "Save changes"}
           </button>
           {saved ? (
-            <span className="faint" style={{ fontSize: 12, color: "var(--success)" }}>
+            <span className="faint text-xs text-[var(--success)]">
               Saved.
             </span>
           ) : null}
           {error ? (
-            <span className="faint" style={{ fontSize: 12, color: "var(--destructive)" }}>
+            <span className="faint text-xs text-destructive">
               {error}
             </span>
           ) : null}
@@ -279,24 +252,16 @@ function AccountTab() {
         title="Email addresses"
         sub="Used for sign-in, invoices, and critical alerts"
       >
-        <div className="col" style={{ gap: 8 }}>
+        <div className="col gap-2">
           {user.emailAddresses.map((e) => {
             const isPrimary = e.id === user.primaryEmailAddressId;
             return (
               <div
                 key={e.id}
-                style={{
-                  display: "flex",
-                  alignItems: "center",
-                  gap: 12,
-                  padding: "10px 12px",
-                  border: "1px solid var(--db-hair)",
-                  borderRadius: 8,
-                  background: "var(--db-surface)",
-                }}
+                className="flex items-center gap-3 px-3 py-2.5 border border-border rounded-lg bg-card"
               >
                 <Icon name="mail" size={14} />
-                <span className="mono" style={{ flex: 1, fontSize: 13 }}>
+                <span className="mono flex-1 text-[13px]">
                   {e.emailAddress}
                 </span>
                 {e.verification?.status === "verified" ? (
@@ -309,11 +274,11 @@ function AccountTab() {
             );
           })}
         </div>
-        <div style={{ marginTop: 14 }} className="faint" role="note">
-          <span style={{ fontSize: 12 }}>
+        <div className="mt-[14px] faint" role="note">
+          <span className="text-xs">
             Add, verify, or set a primary email in your account modal.
           </span>
-          <div style={{ marginTop: 8 }}>
+          <div className="mt-2">
             <button
               type="button"
               className="btn btn--ghost btn--sm"
@@ -330,7 +295,7 @@ function AccountTab() {
         title="Security"
         sub="Password, two-factor auth, and active sessions"
       >
-        <div className="col" style={{ gap: 10, fontSize: 13 }}>
+        <div className="col gap-2.5 text-[13px]">
           <SecurityRow
             label="Password"
             value={
@@ -353,7 +318,7 @@ function AccountTab() {
             }
           />
         </div>
-        <div style={{ marginTop: 14 }}>
+        <div className="mt-[14px]">
           <button
             type="button"
             className="btn btn--ghost btn--sm"
@@ -389,17 +354,9 @@ function SecurityRow({
   positive?: boolean;
 }) {
   return (
-    <div
-      style={{
-        display: "flex",
-        alignItems: "center",
-        justifyContent: "space-between",
-        padding: "10px 0",
-        borderBottom: "1px solid var(--db-hair)",
-      }}
-    >
+    <div className="flex items-center justify-between py-2.5 border-b border-border">
       <span className="faint">{label}</span>
-      <span style={{ color: positive ? "var(--success)" : "var(--db-text)" }}>{value}</span>
+      <span className={positive ? "text-[var(--success)]" : "text-foreground"}>{value}</span>
     </div>
   );
 }
@@ -468,30 +425,23 @@ function OrganizationTab() {
   }
 
   return (
-    <div className="col" style={{ gap: 16 }}>
+    <div className="col gap-4">
       <SectionCard
         title="Identity"
         sub="Name and slug shown to teammates and in assistant hostnames"
       >
-        <div style={{ display: "flex", alignItems: "center", gap: 16, marginBottom: 20 }}>
+        <div className="flex items-center gap-4 mb-5">
           {/* eslint-disable-next-line @next/next/no-img-element */}
           <img
             src={organization.imageUrl}
             alt=""
             width={64}
             height={64}
-            style={{
-              width: 64,
-              height: 64,
-              borderRadius: 12,
-              objectFit: "cover",
-              border: "1px solid var(--db-hair)",
-              background: "var(--db-surface-2)",
-            }}
+            className="w-16 h-16 rounded-xl object-cover border border-border bg-muted"
           />
-          <div style={{ flex: 1 }}>
-            <div style={{ fontSize: 13, fontWeight: 500 }}>Organization logo</div>
-            <div className="faint" style={{ fontSize: 12, marginTop: 2 }}>
+          <div className="flex-1">
+            <div className="text-[13px] font-medium">Organization logo</div>
+            <div className="faint text-xs mt-0.5">
               PNG or JPG, square. Shows up in the switcher and on invites.
             </div>
           </div>
@@ -501,7 +451,7 @@ function OrganizationTab() {
             <input
               type="file"
               accept="image/png,image/jpeg"
-              style={{ display: "none" }}
+              className="hidden"
               onChange={onLogoPick}
               disabled={uploading}
             />
@@ -520,7 +470,7 @@ function OrganizationTab() {
           />
         </Field>
 
-        <div style={{ height: 12 }} />
+        <div className="h-3" />
 
         {(() => {
           // If the Clerk instance doesn't advertise a slug, slugs are
@@ -537,15 +487,12 @@ function OrganizationTab() {
                   : "Org slugs are disabled for this Clerk instance. Enable them in the Clerk dashboard to change this."
               }
             >
-              <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
-                <span
-                  className="faint mono"
-                  style={{ fontSize: 12, whiteSpace: "nowrap" }}
-                >
+              <div className="flex gap-2 items-center">
+                <span className="faint mono text-xs whitespace-nowrap">
                   clawbot.dev/
                 </span>
                 <input
-                  className="input"
+                  className={`input flex-1 ${slugsEnabled ? "" : "opacity-60"}`}
                   value={slug}
                   onChange={(e) => {
                     setSlug(
@@ -554,7 +501,6 @@ function OrganizationTab() {
                     setSaved(false);
                     setError("");
                   }}
-                  style={{ flex: 1, opacity: slugsEnabled ? 1 : 0.6 }}
                   placeholder="acme"
                   readOnly={!slugsEnabled}
                 />
@@ -563,7 +509,7 @@ function OrganizationTab() {
           );
         })()}
 
-        <div style={{ marginTop: 14, display: "flex", alignItems: "center", gap: 12 }}>
+        <div className="mt-[14px] flex items-center gap-3">
           <button
             type="button"
             className="btn btn--primary"
@@ -574,12 +520,12 @@ function OrganizationTab() {
             {saving ? "Saving…" : "Save changes"}
           </button>
           {saved ? (
-            <span className="faint" style={{ fontSize: 12, color: "var(--success)" }}>
+            <span className="faint text-xs text-[var(--success)]">
               Saved.
             </span>
           ) : null}
           {error ? (
-            <span className="faint" style={{ fontSize: 12, color: "var(--destructive)" }}>
+            <span className="faint text-xs text-destructive">
               {error}
             </span>
           ) : null}
@@ -601,10 +547,10 @@ function OrganizationTab() {
         </dl>
       </SectionCard>
 
-      <div className="section-heading">
+      <div className="mx-0.5 mt-6 mb-1.5 flex items-center gap-2.5 text-[11px] font-semibold uppercase tracking-[0.08em] text-destructive">
         <Icon name="alert" size={14} />
         <span>Danger zone</span>
-        <div className="section-heading__rule" />
+        <div className="h-px flex-1 bg-[color-mix(in_oklab,var(--destructive)_30%,transparent)]" />
       </div>
       <OrgDangerZone />
     </div>
@@ -634,7 +580,7 @@ function AppearanceTab() {
   }
 
   return (
-    <div className="col" style={{ gap: 16 }}>
+    <div className="col gap-4">
       <SectionCard title="Theme" sub="Defaults to dark. Picked here overrides the top-bar toggle.">
         <div className="setrow-group">
           <ToggleRow
@@ -647,7 +593,7 @@ function AppearanceTab() {
       </SectionCard>
 
       <SectionCard title="System" sub="More density + motion controls are coming soon.">
-        <div className="faint" style={{ fontSize: 12, lineHeight: 1.6 }}>
+        <div className="faint text-xs leading-[1.6]">
           The top-bar sun/moon toggle is the quickest way to switch — it mirrors this setting.
           Compact density and reduced-motion land in a later release.
         </div>
@@ -727,7 +673,7 @@ function NotificationsTab() {
   }, []);
 
   return (
-    <div className="col" style={{ gap: 16 }}>
+    <div className="col gap-4">
       <Callout kind="info" icon="info" title="Saved locally for now">
         These preferences live in your browser while the server-side preferences API is being
         built. They&rsquo;ll move to the account profile in the next release.
@@ -805,19 +751,12 @@ function OrgDangerZone() {
   }
 
   return (
-    <div className="col" style={{ gap: 16 }}>
+    <div className="col gap-4">
       <SectionCard title="Leave this organization">
-        <div
-          style={{
-            display: "flex",
-            alignItems: "center",
-            gap: 16,
-            flexWrap: "wrap",
-          }}
-        >
-          <div style={{ flex: 1, minWidth: 220 }}>
-            <div style={{ fontSize: 13, fontWeight: 500 }}>Step down from {organization.name}</div>
-            <div className="faint" style={{ fontSize: 12, marginTop: 2, lineHeight: 1.5 }}>
+        <div className="flex items-center gap-4 flex-wrap">
+          <div className="flex-1 min-w-[220px]">
+            <div className="text-[13px] font-medium">Step down from {organization.name}</div>
+            <div className="faint text-xs mt-0.5 leading-[1.5]">
               You&rsquo;ll lose access immediately. Your assistants stay with the org.
             </div>
           </div>
@@ -834,22 +773,12 @@ function OrgDangerZone() {
       </SectionCard>
 
       <SectionCard className="danger" title="Delete organization">
-        <div
-          style={{
-            display: "flex",
-            alignItems: "center",
-            justifyContent: "space-between",
-            gap: 16,
-            flexWrap: "wrap",
-          }}
-        >
-          <div style={{ flex: "1 1 240px", minWidth: 0 }}>
-            <div
-              style={{ fontSize: 13, fontWeight: 500, color: "var(--destructive)" }}
-            >
+        <div className="flex items-center justify-between gap-4 flex-wrap">
+          <div className="flex-[1_1_240px] min-w-0">
+            <div className="text-[13px] font-medium text-destructive">
               Delete {organization.name}
             </div>
-            <div className="faint" style={{ fontSize: 12, marginTop: 3, lineHeight: 1.5 }}>
+            <div className="faint text-xs mt-[3px] leading-[1.5]">
               Permanently deletes all assistants, credits, and history. Cannot be undone.
             </div>
           </div>
@@ -863,8 +792,8 @@ function OrgDangerZone() {
               Delete
             </button>
           ) : (
-            <div style={{ display: "flex", flexDirection: "column", gap: 8, width: 320 }}>
-              <div className="faint" style={{ fontSize: 12 }}>
+            <div className="flex flex-col gap-2 w-[320px]">
+              <div className="faint text-xs">
                 Type <span className="mono">{organization.name}</span> to confirm.
               </div>
               <input
@@ -873,7 +802,7 @@ function OrgDangerZone() {
                 onChange={(e) => setConfirmName(e.target.value)}
                 placeholder={organization.name}
               />
-              <div style={{ display: "flex", gap: 8 }}>
+              <div className="flex gap-2">
                 <button
                   type="button"
                   className="btn btn--ghost btn--sm"
@@ -898,7 +827,7 @@ function OrgDangerZone() {
           )}
         </div>
         {error ? (
-          <div className="field__err" style={{ marginTop: 12 }}>
+          <div className="field__err mt-3">
             {error}
           </div>
         ) : null}

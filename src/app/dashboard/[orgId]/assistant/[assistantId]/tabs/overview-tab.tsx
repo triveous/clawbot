@@ -33,7 +33,7 @@ function ProvisioningOverview({ a, plan }: { a: AssistantResponse; plan: Plan | 
           title="Provisioning in progress"
           sub={`Step ${doneCount + 1} of ${steps.length} · usually 2–3 min`}
         >
-          <div className="progress" style={{ marginBottom: 20 }}>
+          <div className="progress mb-5">
             <div
               className="progress__bar"
               style={{ width: `${(doneCount / steps.length) * 100}%` }}
@@ -46,15 +46,7 @@ function ProvisioningOverview({ a, plan }: { a: AssistantResponse; plan: Plan | 
                   {s.state === "done" ? (
                     <Icon name="check" size={12} />
                   ) : s.state === "current" ? (
-                    <span
-                      className="pulse"
-                      style={{
-                        width: 8,
-                        height: 8,
-                        borderRadius: 999,
-                        background: "currentColor",
-                      }}
-                    />
+                    <span className="pulse w-2 h-2 rounded-full bg-current" />
                   ) : (
                     i + 1
                   )}
@@ -148,11 +140,11 @@ function ActiveOverview({ a, plan }: { a: AssistantResponse; plan: Plan | null }
               {cpuDisplay.toFixed(1)}
               <span className="unit">%</span>
             </div>
-            <div style={{ marginTop: 8, color: "var(--primary)" }}>
+            <div className="mt-2 text-primary">
               <Sparkline points={cpuValues} w={220} h={32} fill />
             </div>
             {cpuLoading && cpuSeries.length === 0 ? (
-              <div className="faint" style={{ fontSize: 11, marginTop: 6 }}>
+              <div className="faint text-[11px] mt-1.5">
                 Loading metrics…
               </div>
             ) : null}
@@ -163,13 +155,10 @@ function ActiveOverview({ a, plan }: { a: AssistantResponse; plan: Plan | null }
               {memSeries[memSeries.length - 1].toFixed(1)}
               <span className="unit">%</span>
             </div>
-            <div style={{ marginTop: 8, color: "oklch(0.58 0.08 230)" }}>
+            <div className="mt-2" style={{ color: "oklch(0.58 0.08 230)" }}>
               <Sparkline points={memSeries} w={220} h={32} fill />
             </div>
-            <div
-              className="faint"
-              style={{ fontSize: 11, marginTop: 6, fontFamily: "var(--font-geist-mono)" }}
-            >
+            <div className="faint text-[11px] mt-1.5 font-mono">
               preview — live memory coming soon
             </div>
           </div>
@@ -179,7 +168,7 @@ function ActiveOverview({ a, plan }: { a: AssistantResponse; plan: Plan | null }
               {Math.round(diskSeries[diskSeries.length - 1])}
               <span className="unit">%</span>
             </div>
-            <div className="progress" style={{ marginTop: 14 }}>
+            <div className="progress mt-[14px]">
               <div
                 className="progress__bar"
                 style={{
@@ -188,10 +177,7 @@ function ActiveOverview({ a, plan }: { a: AssistantResponse; plan: Plan | null }
                 }}
               />
             </div>
-            <div
-              className="faint"
-              style={{ fontSize: 11, marginTop: 6, fontFamily: "var(--font-geist-mono)" }}
-            >
+            <div className="faint text-[11px] mt-1.5 font-mono">
               preview — live disk coming soon
             </div>
           </div>
@@ -199,9 +185,9 @@ function ActiveOverview({ a, plan }: { a: AssistantResponse; plan: Plan | null }
 
         <SectionCard title="Connect to Gateway">
           {a.accessMode === "ssh" ? (
-            <div className="col" style={{ gap: 14 }}>
+            <div className="col gap-[14px]">
               <div>
-                <div className="uc faint" style={{ marginBottom: 6 }}>
+                <div className="uc faint mb-1.5">
                   1. Open an SSH tunnel
                 </div>
                 <CodeBlock
@@ -209,26 +195,26 @@ function ActiveOverview({ a, plan }: { a: AssistantResponse; plan: Plan | null }
                 />
               </div>
               <div>
-                <div className="uc faint" style={{ marginBottom: 6 }}>
+                <div className="uc faint mb-1.5">
                   2. Open in browser
                 </div>
                 <CodeBlock code="http://localhost:8888" prompt="→" />
               </div>
             </div>
           ) : (
-            <div className="col" style={{ gap: 14 }}>
+            <div className="col gap-[14px]">
               <div>
-                <div className="uc faint" style={{ marginBottom: 6 }}>
+                <div className="uc faint mb-1.5">
                   1. Join your tailnet
                 </div>
-                <div className="faint" style={{ fontSize: 12, marginBottom: 8 }}>
+                <div className="faint text-xs mb-2">
                   Tailscale Serve handles TLS and auth — no tunnel or gateway token.
                 </div>
                 <CodeBlock code="tailscale up" />
               </div>
               {a.hostname ? (
                 <div>
-                  <div className="uc faint" style={{ marginBottom: 6 }}>
+                  <div className="uc faint mb-1.5">
                     2. Open in browser
                   </div>
                   <CodeBlock code={`https://${a.hostname}`} prompt="→" />

@@ -336,7 +336,7 @@ export default function BillingPage({
         <div>
           <h1 className="page__title">
             Billing{" "}
-            <span className="accent" style={{ fontFamily: "var(--font-instrument-serif)" }}>
+            <span className="accent font-[var(--font-instrument-serif)]">
               &amp; credits
             </span>
           </h1>
@@ -362,7 +362,7 @@ export default function BillingPage({
       </div>
 
       {error ? (
-        <div style={{ marginBottom: 16 }}>
+        <div className="mb-4">
           <Callout kind="danger" icon="alert" title="Something went wrong">
             {error}
           </Callout>
@@ -370,7 +370,7 @@ export default function BillingPage({
       ) : null}
 
       {pastDue.length > 0 ? (
-        <div style={{ marginBottom: 16 }}>
+        <div className="mb-4">
           <Callout
             kind="danger"
             icon="alert"
@@ -378,7 +378,7 @@ export default function BillingPage({
           >
             Assistant is paused until payment is collected. Update your card from the Stripe
             portal to resume.
-            <div style={{ marginTop: 10 }}>
+            <div className="mt-2.5">
               <button
                 type="button"
                 className="btn btn--danger btn--sm"
@@ -394,7 +394,7 @@ export default function BillingPage({
       ) : null}
 
       {/* Stat strip */}
-      <div className="grid4" style={{ marginBottom: 20 }}>
+      <div className="grid4 mb-5">
         <div className="stat">
           <div className="stat__label">Monthly total</div>
           <div className="stat__value">
@@ -405,10 +405,7 @@ export default function BillingPage({
         <div className="stat">
           <div className="stat__label">Credits</div>
           <div className="stat__value">{activeCredits.length}</div>
-          <div
-            className="faint"
-            style={{ fontSize: 11, marginTop: 3, fontFamily: "var(--font-geist-mono)" }}
-          >
+          <div className="faint text-[11px] mt-[3px] font-mono">
             {consumedCredits} in use · {availableCredits} available
           </div>
         </div>
@@ -417,10 +414,7 @@ export default function BillingPage({
           <div className="stat__value">
             {nextChargeDate ? formatDate(nextChargeDate) : "—"}
           </div>
-          <div
-            className="faint"
-            style={{ fontSize: 11, marginTop: 3, fontFamily: "var(--font-geist-mono)" }}
-          >
+          <div className="faint text-[11px] mt-[3px] font-mono">
             {activeSubs.length > 0
               ? `${formatMoney(monthlyTotal, defaultCurrency)} via Stripe`
               : "no active subs"}
@@ -429,10 +423,7 @@ export default function BillingPage({
         <div className="stat">
           <div className="stat__label">Lifetime paid</div>
           <div className="stat__value">{formatMoney(lifetimeCents, defaultCurrency)}</div>
-          <div
-            className="faint"
-            style={{ fontSize: 11, marginTop: 3, fontFamily: "var(--font-geist-mono)" }}
-          >
+          <div className="faint text-[11px] mt-[3px] font-mono">
             {invoices.filter((i) => i.status === "paid").length} paid invoices
           </div>
         </div>
@@ -457,15 +448,9 @@ export default function BillingPage({
         }
       >
         {sortedCredits.length === 0 ? (
-          <div
-            style={{
-              padding: "40px 24px",
-              textAlign: "center",
-              color: "var(--muted-foreground)",
-            }}
-          >
-            <div style={{ fontSize: 13 }}>No credits yet.</div>
-            <div style={{ marginTop: 12 }}>
+          <div className="py-10 px-6 text-center text-muted-foreground">
+            <div className="text-[13px]">No credits yet.</div>
+            <div className="mt-3">
               <Link
                 href={`/dashboard/${orgId}/pricing`}
                 className="btn btn--primary btn--sm"
@@ -484,7 +469,7 @@ export default function BillingPage({
                 <th>Attached to</th>
                 <th>Renews</th>
                 <th>Source</th>
-                <th style={{ textAlign: "right" }}>Actions</th>
+                <th className="text-right">Actions</th>
               </tr>
             </thead>
             <tbody>
@@ -577,22 +562,15 @@ export default function BillingPage({
                 return (
                   <tr key={c.id}>
                     <td>
-                      <div style={{ display: "flex", flexDirection: "column", gap: 2 }}>
-                        <span style={{ fontWeight: 500 }}>{plan?.displayName ?? "—"}</span>
-                        <span className="mono faint" style={{ fontSize: 11 }}>
+                      <div className="flex flex-col gap-0.5">
+                        <span className="font-medium">{plan?.displayName ?? "—"}</span>
+                        <span className="mono faint text-[11px]">
                           {plan ? `${formatMoney(plan.priceCents, plan.currency)}/mo` : c.id.slice(0, 10)}
                         </span>
                       </div>
                     </td>
                     <td>
-                      <div
-                        style={{
-                          display: "flex",
-                          gap: 6,
-                          alignItems: "center",
-                          flexWrap: "wrap",
-                        }}
-                      >
+                      <div className="flex gap-1.5 items-center flex-wrap">
                         <StatusPill status={c.status} />
                         {sub?.stripeScheduleId ? (
                           <span className="pill pill--info">downgrade pending</span>
@@ -606,12 +584,7 @@ export default function BillingPage({
                       {attached ? (
                         <Link
                           href={`/dashboard/${orgId}/assistant/${attached.id}`}
-                          style={{
-                            display: "inline-flex",
-                            alignItems: "center",
-                            gap: 6,
-                            fontSize: 13,
-                          }}
+                          className="inline-flex items-center gap-1.5 text-[13px]"
                         >
                           <Icon name="bot" size={12} />
                           {attached.name}
@@ -627,7 +600,7 @@ export default function BillingPage({
                     <td className="dim mono">
                       {c.currentPeriodEnd ? formatDate(c.currentPeriodEnd) : "—"}
                     </td>
-                    <td className="dim" style={{ fontSize: 12 }}>
+                    <td className="dim text-xs">
                       {c.source === "stripe" ? (
                         "Stripe"
                       ) : c.source === "granted" ? (
@@ -636,15 +609,8 @@ export default function BillingPage({
                         c.source
                       )}
                     </td>
-                    <td style={{ textAlign: "right" }}>
-                      <div
-                        style={{
-                          display: "flex",
-                          gap: 6,
-                          justifyContent: "flex-end",
-                          alignItems: "center",
-                        }}
-                      >
+                    <td className="text-right">
+                      <div className="flex gap-1.5 justify-end items-center">
                         {primary}
                         {menuItems.length > 0 ? <RowMenu items={menuItems} /> : null}
                       </div>
@@ -657,23 +623,11 @@ export default function BillingPage({
         )}
 
         {changingPlanFor ? (
-          <div
-            style={{
-              borderTop: "1px solid var(--db-hair)",
-              padding: "14px 18px",
-              background: "var(--db-bg-2)",
-            }}
-          >
-            <div className="uc faint" style={{ marginBottom: 10 }}>
+          <div className="border-t border-border px-[18px] py-[14px] bg-muted">
+            <div className="uc faint mb-2.5">
               Switch plan
             </div>
-            <div
-              style={{
-                display: "grid",
-                gap: 8,
-                gridTemplateColumns: "repeat(auto-fill, minmax(240px, 1fr))",
-              }}
-            >
+            <div className="grid gap-2 grid-cols-[repeat(auto-fill,minmax(240px,1fr))]">
               {plans
                 .filter((p) => {
                   const sub = subById.get(changingPlanFor);
@@ -686,22 +640,13 @@ export default function BillingPage({
                   return (
                     <div
                       key={p.id}
-                      style={{
-                        display: "flex",
-                        alignItems: "center",
-                        justifyContent: "space-between",
-                        gap: 12,
-                        padding: "10px 12px",
-                        border: "1px solid var(--db-hair)",
-                        borderRadius: 8,
-                        background: "var(--db-surface)",
-                      }}
+                      className="flex items-center justify-between gap-3 px-3 py-2.5 border border-border rounded-lg bg-card"
                     >
                       <div>
-                        <div style={{ fontSize: 13, fontWeight: 500 }}>
+                        <div className="text-[13px] font-medium">
                           {p.displayName}
                         </div>
-                        <div className="faint" style={{ fontSize: 11 }}>
+                        <div className="faint text-[11px]">
                           {formatMoney(p.priceCents, p.currency)}/mo ·{" "}
                           {isUpgrade ? "upgrade now" : "downgrade next period"}
                         </div>
@@ -729,21 +674,14 @@ export default function BillingPage({
       </SectionCard>
 
       {/* Invoices */}
-      <div style={{ marginTop: 20 }}>
+      <div className="mt-5">
         <SectionCard
           title="Invoices"
           sub="Paid via Stripe. VAT receipts available on each invoice."
           pad={false}
         >
           {invoices.length === 0 ? (
-            <div
-              style={{
-                padding: "32px 24px",
-                textAlign: "center",
-                color: "var(--muted-foreground)",
-                fontSize: 13,
-              }}
-            >
+            <div className="py-8 px-6 text-center text-muted-foreground text-[13px]">
               No invoices yet.
             </div>
           ) : (
@@ -770,8 +708,8 @@ export default function BillingPage({
                     <td>
                       <StatusPill status={inv.status} />
                     </td>
-                    <td style={{ textAlign: "right" }}>
-                      <div style={{ display: "flex", gap: 6, justifyContent: "flex-end" }}>
+                    <td className="text-right">
+                      <div className="flex gap-1.5 justify-end">
                         {inv.hostedInvoiceUrl ? (
                           <a
                             href={inv.hostedInvoiceUrl}
@@ -805,7 +743,7 @@ export default function BillingPage({
       </div>
 
       {/* Payment + billing details */}
-      <div className="grid2" style={{ marginTop: 20, gap: 20 }}>
+      <div className="grid2 mt-5 gap-5">
         <SectionCard
           title="Payment methods"
           sub={
@@ -833,17 +771,14 @@ export default function BillingPage({
               above — only the raw card list is restricted.
             </Callout>
           ) : !paymentMethodsLoaded ? (
-            <div
-              className="faint"
-              style={{ fontSize: 13, padding: "8px 0" }}
-            >
+            <div className="faint text-[13px] py-2">
               Loading cards…
             </div>
           ) : paymentMethods.length === 0 ? (
-            <div className="faint" style={{ fontSize: 13, lineHeight: 1.55 }}>
+            <div className="faint text-[13px] leading-[1.55]">
               No cards on file. Stripe asks for a card at checkout, so you&rsquo;ll get one
               once you subscribe. You can also add one up-front from the portal.
-              <div style={{ marginTop: 14 }}>
+              <div className="mt-[14px]">
                 <button
                   type="button"
                   className="btn btn--ghost"
@@ -856,43 +791,26 @@ export default function BillingPage({
               </div>
             </div>
           ) : (
-            <div className="col" style={{ gap: 10 }}>
+            <div className="col gap-2.5">
               {paymentMethods.map((pm) => (
                 <div
                   key={pm.id}
-                  style={{
-                    display: "flex",
-                    alignItems: "center",
-                    gap: 12,
-                    padding: 12,
-                    border: `1px solid ${pm.isDefault ? "var(--db-hair-strong)" : "var(--db-hair)"}`,
-                    borderRadius: 8,
-                    background: pm.isDefault ? "var(--db-surface-2)" : "transparent",
-                  }}
+                  className={`flex items-center gap-3 p-3 border rounded-lg ${pm.isDefault ? "border-foreground/20 bg-muted" : "border-border bg-transparent"}`}
                 >
                   <div
+                    className="w-[42px] h-7 rounded grid place-items-center text-white text-[10px] font-bold tracking-[0.04em] shrink-0"
                     style={{
-                      width: 42,
-                      height: 28,
                       background:
                         CARD_BRAND_COLORS[pm.brand] ?? CARD_BRAND_COLORS.unknown,
-                      borderRadius: 4,
-                      display: "grid",
-                      placeItems: "center",
-                      color: "#fff",
-                      fontSize: 10,
-                      fontWeight: 700,
-                      letterSpacing: "0.04em",
-                      flexShrink: 0,
                     }}
                   >
                     {brandLabel(pm.brand)}
                   </div>
-                  <div style={{ flex: 1, minWidth: 0 }}>
-                    <div style={{ fontSize: 13, fontWeight: 500 }}>
+                  <div className="flex-1 min-w-0">
+                    <div className="text-[13px] font-medium">
                       <span className="mono">•••• •••• •••• {pm.last4 || "••••"}</span>
                     </div>
-                    <div className="faint" style={{ fontSize: 11 }}>
+                    <div className="faint text-[11px]">
                       Expires{" "}
                       <span className="mono">
                         {String(pm.expMonth).padStart(2, "0")}/
@@ -909,10 +827,9 @@ export default function BillingPage({
               ))}
               <button
                 type="button"
-                className="btn btn--ghost btn--sm"
+                className="btn btn--ghost btn--sm self-start mt-1"
                 onClick={openPortal}
                 disabled={busy === "portal"}
-                style={{ alignSelf: "flex-start", marginTop: 4 }}
               >
                 <Icon name="link" size={12} />
                 {busy === "portal" ? "Opening…" : "Manage in Stripe"}
@@ -938,18 +855,15 @@ export default function BillingPage({
             onClick={() => setConfirmCancel(null)}
             role="presentation"
           />
-          <div className="modal" style={{ width: 420, padding: 28 }}>
-            <div style={{ fontSize: 18, fontWeight: 500, fontFamily: "var(--font-instrument-serif)" }}>
+          <div className="modal w-[420px] p-7">
+            <div className="text-[18px] font-medium font-[var(--font-instrument-serif)]">
               Cancel at the end of the period?
             </div>
-            <div
-              className="faint"
-              style={{ fontSize: 13, marginTop: 8, lineHeight: 1.6 }}
-            >
+            <div className="faint text-[13px] mt-2 leading-[1.6]">
               Your assistant keeps running until the current billing period ends. After that
               it stops and the credit is released.
             </div>
-            <div style={{ display: "flex", gap: 8, marginTop: 20, justifyContent: "flex-end" }}>
+            <div className="flex gap-2 mt-5 justify-end">
               <button
                 type="button"
                 className="btn btn--ghost"
@@ -1009,7 +923,7 @@ function BillingDetailsCard({
   if (customer === null) {
     return (
       <SectionCard title="Billing details" sub="Shown on Stripe invoices">
-        <div className="faint" style={{ fontSize: 13, padding: "8px 0" }}>
+        <div className="faint text-[13px] py-2">
           Loading…
         </div>
       </SectionCard>
@@ -1033,7 +947,7 @@ function BillingDetailsCard({
           </button>
         }
       >
-        <div className="faint" style={{ fontSize: 13, lineHeight: 1.55 }}>
+        <div className="faint text-[13px] leading-[1.55]">
           Stripe creates a customer record on your first checkout. Once it exists, your billing
           identity (name, email, address, tax IDs) will show up here — and on every invoice.
         </div>
@@ -1086,11 +1000,11 @@ function BillingDetailsCard({
     rows.push({
       label: taxIds.length > 1 ? "Tax IDs" : "Tax ID",
       value: (
-        <div className="col" style={{ gap: 4 }}>
+        <div className="col gap-1">
           {taxIds.map((t) => (
             <div key={t.id}>
               <span className="mono">{t.value}</span>{" "}
-              <span className="faint" style={{ fontSize: 11 }}>
+              <span className="faint text-[11px]">
                 · {TAX_LABEL(t.type)}
                 {t.country ? ` · ${t.country}` : ""}
               </span>
@@ -1119,7 +1033,7 @@ function BillingDetailsCard({
     >
       <dl className="kv">
         {rows.map((r) => (
-          <div key={r.label} style={{ display: "contents" }}>
+          <div key={r.label} className="contents">
             <dt>{r.label}</dt>
             <dd>{r.value}</dd>
           </div>

@@ -13,49 +13,19 @@ export function EmptyStage({
   children?: ReactNode;
 }) {
   return (
-    <div className="page-empty">
-      <div className="page-empty__icon">
+    <div className="mx-auto my-18 max-w-[480px] p-8 text-center text-muted-foreground">
+      <div className="mx-auto mb-[18px] grid size-14 place-items-center rounded-[14px] bg-[color-mix(in_oklab,var(--primary)_14%,transparent)] text-primary">
         <Icon name={icon} size={28} />
       </div>
-      <div className="page-empty__title">{title}</div>
-      <div className="page-empty__sub">{stage}</div>
-      {children ? <div className="page-empty__body">{children}</div> : null}
-      <style>{`
-        .page-empty {
-          max-width: 480px;
-          margin: 72px auto;
-          padding: 32px;
-          text-align: center;
-          color: var(--muted-foreground);
-        }
-        .page-empty__icon {
-          width: 56px; height: 56px;
-          border-radius: 14px;
-          background: color-mix(in oklab, var(--primary) 14%, transparent);
-          color: var(--primary);
-          display: grid; place-items: center;
-          margin: 0 auto 18px;
-        }
-        .page-empty__title {
-          font-family: var(--font-instrument-serif);
-          font-size: 28px;
-          line-height: 1.15;
-          color: var(--foreground);
-          margin-bottom: 6px;
-        }
-        .page-empty__sub {
-          font-size: 12px;
-          letter-spacing: 0.08em;
-          text-transform: uppercase;
-          font-family: var(--font-geist-mono);
-          color: var(--muted-foreground);
-        }
-        .page-empty__body {
-          margin-top: 20px;
-          font-size: 14px;
-          line-height: 1.55;
-        }
-      `}</style>
+      <div className="mb-1.5 font-[var(--font-instrument-serif)] text-[28px] leading-[1.15] text-foreground">
+        {title}
+      </div>
+      <div className="font-mono text-[12px] uppercase tracking-[0.08em] text-muted-foreground">
+        {stage}
+      </div>
+      {children ? (
+        <div className="mt-5 text-sm leading-[1.55]">{children}</div>
+      ) : null}
     </div>
   );
 }
