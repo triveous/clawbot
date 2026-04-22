@@ -89,6 +89,61 @@ export const billingRoute = new Hono()
     return c.json({ subscriptions: rows });
   })
 
+  // ─── Stripe customer details (org-admin only) ────────────────────────────
+  // Surfaces whatever billing identity Stripe has on file for the org —
+  // name, email, address, tax IDs, reporting currency. The UI only renders
+  // fields we actually get back; everything else stays hidden.
+  .get("/customer", async (c) => {
+    const { orgRole } = await auth();
+    if (orgRole !== "org:admin") {
+      throw new HTTPException(403, { message: "Org admin role required" });
+    }
+
+    const dbOrg = c.get("dbOrg");
+    if (!dbOrg.billingCustomerId) {
+      return c.json({ configured: false });
+    }
+
+    const stripe = getStripe();
+    const [customer, taxIds] = await Promise.all([
+      stripe.customers.retrieve(dbOrg.billingCustomerId, {
+        expand: ["tax_ids"],
+      }),
+      stripe.customers.listTaxIds(dbOrg.billingCustomerId, { limit: 10 }),
+    ]);
+
+    if (customer.deleted) {
+      return c.json({ configured: false });
+    }
+
+    const addr = customer.address ?? null;
+
+    return c.json({
+      configured: true,
+      customerId: customer.id,
+      name: customer.name ?? null,
+      email: customer.email ?? null,
+      phone: customer.phone ?? null,
+      currency: customer.currency ?? null,
+      address: addr
+        ? {
+            line1: addr.line1 ?? null,
+            line2: addr.line2 ?? null,
+            city: addr.city ?? null,
+            state: addr.state ?? null,
+            postalCode: addr.postal_code ?? null,
+            country: addr.country ?? null,
+          }
+        : null,
+      taxIds: taxIds.data.map((t) => ({
+        id: t.id,
+        type: t.type,
+        value: t.value,
+        country: t.country ?? null,
+      })),
+    });
+  })
+
   // ─── Stripe cards (org-admin only) ────────────────────────────────────────
   // Returns the card-type payment methods attached to this org's Stripe
   // customer, plus which one is the default. No sensitive fields — just

@@ -1,6 +1,6 @@
 "use client";
 
-import { use, useCallback, useEffect, useMemo, useState } from "react";
+import { use, useCallback, useEffect, useMemo, useState, type ReactNode } from "react";
 import Link from "next/link";
 import { useOrganization } from "@clerk/nextjs";
 import { useRpc } from "@/hooks/use-rpc";
@@ -24,6 +24,26 @@ type PaymentMethod = {
   country: string;
   isDefault: boolean;
 };
+
+type StripeCustomer =
+  | { configured: false }
+  | {
+      configured: true;
+      customerId: string;
+      name: string | null;
+      email: string | null;
+      phone: string | null;
+      currency: string | null;
+      address: {
+        line1: string | null;
+        line2: string | null;
+        city: string | null;
+        state: string | null;
+        postalCode: string | null;
+        country: string | null;
+      } | null;
+      taxIds: { id: string; type: string; value: string; country: string | null }[];
+    };
 
 const CARD_BRAND_COLORS: Record<string, string> = {
   visa: "#1a1f71",
@@ -126,6 +146,7 @@ export default function BillingPage({
   const [assistants, setAssistants] = useState<Assistant[]>([]);
   const [paymentMethods, setPaymentMethods] = useState<PaymentMethod[]>([]);
   const [paymentMethodsLoaded, setPaymentMethodsLoaded] = useState(false);
+  const [customer, setCustomer] = useState<StripeCustomer | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
   const [busy, setBusy] = useState<string | null>(null);
@@ -172,11 +193,18 @@ export default function BillingPage({
   const loadPaymentMethods = useCallback(async () => {
     setPaymentMethodsLoaded(false);
     try {
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      const res = await (rpc.api.billing as any)["payment-methods"].$get();
-      if (res.ok) {
-        const data = (await res.json()) as { paymentMethods: PaymentMethod[] };
+      const [pmRes, custRes] = await Promise.all([
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        (rpc.api.billing as any)["payment-methods"].$get(),
+        rpc.api.billing.customer.$get(),
+      ]);
+      if (pmRes.ok) {
+        const data = (await pmRes.json()) as { paymentMethods: PaymentMethod[] };
         setPaymentMethods(data.paymentMethods);
+      }
+      if (custRes.ok) {
+        const data = (await custRes.json()) as StripeCustomer;
+        setCustomer(data);
       }
     } finally {
       setPaymentMethodsLoaded(true);
@@ -893,16 +921,13 @@ export default function BillingPage({
           )}
         </SectionCard>
 
-        <SectionCard title="Billing details" sub="Shown on Stripe invoices">
-          <dl className="kv">
-            <dt>Billed to</dt>
-            <dd>Your organization (Clerk)</dd>
-            <dt>Currency</dt>
-            <dd className="mono">{defaultCurrency}</dd>
-            <dt>Tax details</dt>
-            <dd className="faint">Add a tax ID from the Stripe portal</dd>
-          </dl>
-        </SectionCard>
+        <BillingDetailsCard
+          isAdmin={isAdmin}
+          customer={customer}
+          defaultCurrency={defaultCurrency}
+          onOpenPortal={openPortal}
+          openingPortal={busy === "portal"}
+        />
       </div>
 
       {/* Cancel confirm */}
@@ -946,5 +971,160 @@ export default function BillingPage({
         </>
       ) : null}
     </div>
+  );
+}
+
+function TAX_LABEL(type: string): string {
+  // Stripe tax_id type strings follow a `<country>_<kind>` convention. Upper-
+  // case + split on underscore is readable enough without shipping a
+  // pages-long lookup.
+  return type.replace(/_/g, " ").toUpperCase();
+}
+
+function BillingDetailsCard({
+  isAdmin,
+  customer,
+  defaultCurrency,
+  onOpenPortal,
+  openingPortal,
+}: {
+  isAdmin: boolean;
+  customer: StripeCustomer | null;
+  defaultCurrency: string;
+  onOpenPortal: () => void;
+  openingPortal: boolean;
+}) {
+  if (!isAdmin) {
+    return (
+      <SectionCard title="Billing details" sub="Only org admins can view billing identity">
+        <Callout kind="info" icon="lock" title="Admin only">
+          The name, address, and tax identifiers we print on Stripe invoices are visible to
+          org admins only. Ask an admin to update them.
+        </Callout>
+      </SectionCard>
+    );
+  }
+
+  // Loading — the admin fetch hasn't resolved yet.
+  if (customer === null) {
+    return (
+      <SectionCard title="Billing details" sub="Shown on Stripe invoices">
+        <div className="faint" style={{ fontSize: 13, padding: "8px 0" }}>
+          Loading…
+        </div>
+      </SectionCard>
+    );
+  }
+
+  if (!customer.configured) {
+    return (
+      <SectionCard
+        title="Billing details"
+        sub="Stripe customer not configured yet"
+        actions={
+          <button
+            type="button"
+            className="btn btn--ghost btn--sm"
+            onClick={onOpenPortal}
+            disabled={openingPortal}
+          >
+            <Icon name="link" size={12} />
+            {openingPortal ? "Opening…" : "Configure"}
+          </button>
+        }
+      >
+        <div className="faint" style={{ fontSize: 13, lineHeight: 1.55 }}>
+          Stripe creates a customer record on your first checkout. Once it exists, your billing
+          identity (name, email, address, tax IDs) will show up here — and on every invoice.
+        </div>
+      </SectionCard>
+    );
+  }
+
+  const { name, email, phone, address, taxIds } = customer;
+  const currency = (customer.currency ?? defaultCurrency).toUpperCase();
+  const addressLines = address
+    ? [
+        address.line1,
+        address.line2,
+        [address.city, address.state, address.postalCode].filter(Boolean).join(", ") || null,
+        address.country,
+      ].filter((l): l is string => !!l)
+    : [];
+
+  // Only render rows whose Stripe values are populated; skip anything missing
+  // so the card doesn't read as "billing details: blank".
+  const rows: { label: string; value: ReactNode }[] = [];
+  if (name) rows.push({ label: "Billed to", value: name });
+  if (email)
+    rows.push({
+      label: "Email",
+      value: <span className="mono">{email}</span>,
+    });
+  if (phone)
+    rows.push({
+      label: "Phone",
+      value: <span className="mono">{phone}</span>,
+    });
+  if (addressLines.length > 0) {
+    rows.push({
+      label: "Address",
+      value: (
+        <div>
+          {addressLines.map((line) => (
+            <div key={line}>{line}</div>
+          ))}
+        </div>
+      ),
+    });
+  }
+  rows.push({
+    label: "Currency",
+    value: <span className="mono">{currency}</span>,
+  });
+  if (taxIds.length > 0) {
+    rows.push({
+      label: taxIds.length > 1 ? "Tax IDs" : "Tax ID",
+      value: (
+        <div className="col" style={{ gap: 4 }}>
+          {taxIds.map((t) => (
+            <div key={t.id}>
+              <span className="mono">{t.value}</span>{" "}
+              <span className="faint" style={{ fontSize: 11 }}>
+                · {TAX_LABEL(t.type)}
+                {t.country ? ` · ${t.country}` : ""}
+              </span>
+            </div>
+          ))}
+        </div>
+      ),
+    });
+  }
+
+  return (
+    <SectionCard
+      title="Billing details"
+      sub="Shown on Stripe invoices"
+      actions={
+        <button
+          type="button"
+          className="btn btn--ghost btn--sm"
+          onClick={onOpenPortal}
+          disabled={openingPortal}
+        >
+          <Icon name="edit" size={12} />
+          {openingPortal ? "Opening…" : "Edit in Stripe"}
+        </button>
+      }
+    >
+      <dl className="kv">
+        {rows.map((r) => (
+          <div key={r.label} style={{ display: "contents" }}>
+            <dt>{r.label}</dt>
+            <dd>{r.value}</dd>
+          </div>
+        ))}
+      </dl>
+    </SectionCard>
   );
 }

@@ -416,10 +416,18 @@
 }
 .btn--primary {
   background: var(--db-red);
-  color: #fff;
+  /* Primary is always OpenClaw red; the contrasting text must always be the
+     light foreground (shadcn's --primary-foreground, #ffffff in both themes).
+     We spell it out instead of inheriting from body so the light theme's dark
+     body color can't leak through into nested spans / icons. */
+  color: var(--primary-foreground, #ffffff);
   box-shadow:
     0 0 0 1px oklch(1 0 0 / 0.06) inset,
     0 1px 2px oklch(0 0 0 / 0.3);
+}
+.btn--primary,
+.btn--primary * {
+  color: var(--primary-foreground, #ffffff);
 }
 .btn--primary:hover {
   background: var(--claw-red-hover);
