@@ -176,8 +176,8 @@ export default function AssistantsPage({
             {" · "}
             {runningCount} running
             {" · "}
-            <Link href={`/dashboard/${orgId}/credits`} className="faint">
-              view credits
+            <Link href={`/dashboard/${orgId}/billing`} className="faint">
+              view billing
             </Link>
           </div>
         </div>

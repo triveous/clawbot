@@ -23,8 +23,6 @@ function deriveBreadcrumb(pathname: string, orgId: string): Crumb[] {
       return [{ label: "Billing" }];
     case "pricing":
       return [{ label: "Billing", href: `/dashboard/${orgId}/billing` }, { label: "Pricing" }];
-    case "credits":
-      return [{ label: "Billing", href: `/dashboard/${orgId}/billing` }, { label: "Credits" }];
     case "members":
       return [{ label: "Members" }];
     case "settings":

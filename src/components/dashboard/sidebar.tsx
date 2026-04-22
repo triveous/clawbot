@@ -65,14 +65,6 @@ const NAV: NavItem[] = [
   },
   {
     kind: "link",
-    id: "credits",
-    label: "Credits",
-    icon: "coins",
-    href: (org) => `/dashboard/${org}/credits`,
-    match: (p, org) => isRouteActive(p, `/dashboard/${org}/credits`),
-  },
-  {
-    kind: "link",
     id: "pricing",
     label: "Pricing",
     icon: "tag",

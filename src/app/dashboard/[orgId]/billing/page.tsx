@@ -85,6 +85,21 @@ type Plan = {
   tier: number;
 };
 
+type Credit = {
+  id: string;
+  planId: string;
+  status: string;
+  source: string;
+  currentPeriodEnd: string | null;
+  consumedByAssistantId: string | null;
+};
+
+type Assistant = {
+  id: string;
+  name: string;
+  status: string;
+};
+
 function formatMoney(cents: number, currency: string) {
   return new Intl.NumberFormat("en-US", {
     style: "currency",
@@ -106,6 +121,8 @@ export default function BillingPage({
   const [subs, setSubs] = useState<Subscription[]>([]);
   const [invoices, setInvoices] = useState<Invoice[]>([]);
   const [plans, setPlans] = useState<Plan[]>([]);
+  const [credits, setCredits] = useState<Credit[]>([]);
+  const [assistants, setAssistants] = useState<Assistant[]>([]);
   const [paymentMethods, setPaymentMethods] = useState<PaymentMethod[]>([]);
   const [paymentMethodsLoaded, setPaymentMethodsLoaded] = useState(false);
   const [loading, setLoading] = useState(true);
@@ -117,10 +134,12 @@ export default function BillingPage({
   const load = useCallback(async () => {
     setError("");
     try {
-      const [subRes, invRes, planRes] = await Promise.all([
+      const [subRes, invRes, planRes, creditRes, asstRes] = await Promise.all([
         rpc.api.billing.subscriptions.$get(),
         rpc.api.billing.invoices.$get(),
         rpc.api.plans.$get(),
+        rpc.api.credits.$get(),
+        rpc.api.assistants.$get(),
       ]);
       if (subRes.ok) {
         const data = (await subRes.json()) as { subscriptions: Subscription[] };
@@ -133,6 +152,14 @@ export default function BillingPage({
       if (planRes.ok) {
         const data = (await planRes.json()) as { plans: Plan[] };
         setPlans(data.plans);
+      }
+      if (creditRes.ok) {
+        const data = (await creditRes.json()) as { credits: Credit[] };
+        setCredits(data.credits);
+      }
+      if (asstRes.ok) {
+        const data = (await asstRes.json()) as { assistants: Assistant[] };
+        setAssistants(data.assistants);
       }
     } catch {
       setError("Failed to load billing data");
@@ -172,6 +199,18 @@ export default function BillingPage({
   const pastDue = useMemo(
     () => subs.filter((s) => s.status === "past_due" || s.status === "unpaid"),
     [subs],
+  );
+
+  const activeCredits = useMemo(
+    () => credits.filter((c) => c.status === "active" || c.status === "trialing"),
+    [credits],
+  );
+  const consumedCredits = activeCredits.filter((c) => c.consumedByAssistantId).length;
+  const availableCredits = activeCredits.length - consumedCredits;
+  const planById = useMemo(() => new Map(plans.map((p) => [p.id, p])), [plans]);
+  const assistantById = useMemo(
+    () => new Map(assistants.map((a) => [a.id, a])),
+    [assistants],
   );
 
   const monthlyTotal = activeSubs.reduce((sum, s) => sum + s.priceCents, 0);
@@ -256,11 +295,11 @@ export default function BillingPage({
           <h1 className="page__title">
             Billing{" "}
             <span className="accent" style={{ fontFamily: "var(--font-instrument-serif)" }}>
-              &amp; subscriptions
+              &amp; credits
             </span>
           </h1>
           <div className="page__sub">
-            One subscription → one live assistant. Pay monthly, cancel anytime.
+            Credits are what you buy. One credit → one live assistant.
           </div>
         </div>
         <div className="page__actions">
@@ -275,7 +314,7 @@ export default function BillingPage({
           </button>
           <Link href={`/dashboard/${orgId}/pricing`} className="btn btn--primary">
             <Icon name="plus" size={14} />
-            Buy subscription
+            Buy credit
           </Link>
         </div>
       </div>
@@ -322,13 +361,13 @@ export default function BillingPage({
           </div>
         </div>
         <div className="stat">
-          <div className="stat__label">Subscriptions</div>
-          <div className="stat__value">{activeSubs.length}</div>
+          <div className="stat__label">Credits</div>
+          <div className="stat__value">{activeCredits.length}</div>
           <div
             className="faint"
             style={{ fontSize: 11, marginTop: 3, fontFamily: "var(--font-geist-mono)" }}
           >
-            {subs.length} total · {pastDue.length} past due
+            {consumedCredits} in use · {availableCredits} available
           </div>
         </div>
         <div className="stat">
@@ -357,6 +396,129 @@ export default function BillingPage({
         </div>
       </div>
 
+      {/* Credits — slots in your pool. One slot == one live assistant. */}
+      <SectionCard
+        title="Credits"
+        sub="Each credit is a pre-paid slot for one assistant"
+        pad={false}
+        actions={
+          <Link
+            href={`/dashboard/${orgId}/pricing`}
+            className="btn btn--ghost btn--sm"
+          >
+            <Icon name="plus" size={12} />
+            Buy credit
+          </Link>
+        }
+      >
+        {credits.length === 0 ? (
+          <div
+            style={{
+              padding: "36px 24px",
+              textAlign: "center",
+              color: "var(--muted-foreground)",
+              fontSize: 13,
+            }}
+          >
+            No credits yet. Buy one to deploy your first assistant.
+            <div style={{ marginTop: 12 }}>
+              <Link
+                href={`/dashboard/${orgId}/pricing`}
+                className="btn btn--primary btn--sm"
+              >
+                <Icon name="tag" size={12} />
+                See pricing
+              </Link>
+            </div>
+          </div>
+        ) : (
+          <table className="table">
+            <thead>
+              <tr>
+                <th>Credit</th>
+                <th>Plan</th>
+                <th>Status</th>
+                <th>Attached to</th>
+                <th>Renews</th>
+                <th>Source</th>
+                <th />
+              </tr>
+            </thead>
+            <tbody>
+              {credits.map((c) => {
+                const plan = planById.get(c.planId);
+                const attached = c.consumedByAssistantId
+                  ? assistantById.get(c.consumedByAssistantId)
+                  : null;
+                return (
+                  <tr key={c.id}>
+                    <td className="mono dim">{c.id.slice(0, 10)}</td>
+                    <td>
+                      {plan?.displayName ?? "—"}
+                      {plan ? (
+                        <span className="faint" style={{ marginLeft: 6 }}>
+                          {formatMoney(plan.priceCents, plan.currency)}
+                        </span>
+                      ) : null}
+                    </td>
+                    <td>
+                      <StatusPill status={c.status} />
+                    </td>
+                    <td>
+                      {attached ? (
+                        <Link
+                          href={`/dashboard/${orgId}/assistant/${attached.id}`}
+                          style={{
+                            display: "inline-flex",
+                            alignItems: "center",
+                            gap: 6,
+                            fontSize: 13,
+                          }}
+                        >
+                          <Icon name="bot" size={12} />
+                          {attached.name}
+                        </Link>
+                      ) : c.consumedByAssistantId ? (
+                        <span className="mono faint">
+                          {c.consumedByAssistantId.slice(0, 10)}
+                        </span>
+                      ) : (
+                        <span className="faint">Available</span>
+                      )}
+                    </td>
+                    <td className="dim mono">
+                      {c.currentPeriodEnd ? formatDate(c.currentPeriodEnd) : "—"}
+                    </td>
+                    <td className="dim" style={{ fontSize: 12 }}>
+                      {c.source === "stripe" ? (
+                        "Stripe subscription"
+                      ) : c.source === "granted" ? (
+                        <span className="pill pill--info">Granted</span>
+                      ) : (
+                        c.source
+                      )}
+                    </td>
+                    <td style={{ textAlign: "right" }}>
+                      {!c.consumedByAssistantId && c.status === "active" ? (
+                        <Link
+                          href={`/dashboard/${orgId}`}
+                          className="btn btn--ghost btn--sm"
+                        >
+                          <Icon name="zap" size={12} />
+                          Attach
+                        </Link>
+                      ) : null}
+                    </td>
+                  </tr>
+                );
+              })}
+            </tbody>
+          </table>
+        )}
+      </SectionCard>
+
+      <div style={{ height: 20 }} />
+
       {/* Subscriptions table */}
       <SectionCard
         title="Subscriptions"
@@ -368,7 +530,7 @@ export default function BillingPage({
             className="btn btn--ghost btn--sm"
           >
             <Icon name="plus" size={12} />
-            Buy subscription
+            Buy credit
           </Link>
         }
       >
