@@ -3,9 +3,9 @@
 import Link from "next/link";
 import Image from "next/image";
 import { usePathname } from "next/navigation";
-import { UserButton } from "@clerk/nextjs";
 import { Icon, type IconName } from "./icon";
 import { OrgSwitcher } from "./org-switcher";
+import { UserChip } from "./user-chip";
 
 type NavItem =
   | { kind: "section"; label: string }
@@ -102,9 +102,11 @@ const NAV: NavItem[] = [
 export function Sidebar({
   orgId,
   onNewOrg,
+  onOpenPalette,
 }: {
   orgId: string;
   onNewOrg: () => void;
+  onOpenPalette?: () => void;
 }) {
   const pathname = usePathname() ?? "";
 
@@ -151,23 +153,7 @@ export function Sidebar({
       </nav>
 
       <div className="sidebar__foot">
-        <div className="userchip">
-          <UserButton
-            appearance={{
-              variables: {
-                colorBackground: "var(--card)",
-                colorText: "var(--foreground)",
-                colorPrimary: "var(--primary)",
-                fontFamily: "var(--font-geist-sans)",
-              },
-              elements: {
-                userButtonBox: "userchip__clerk",
-                userButtonTrigger: "userchip__trigger",
-              },
-            }}
-            showName
-          />
-        </div>
+        <UserChip orgId={orgId} onOpenPalette={onOpenPalette} />
       </div>
     </aside>
   );
