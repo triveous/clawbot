@@ -13,3 +13,4 @@ export { CreateAssistantDrawer } from "./create-assistant-drawer";
 export { CreateAssistantWizard } from "./create-assistant-wizard";
 export { FirstAssistantHero } from "./first-assistant-hero";
 export { ClawSigil } from "./claw-sigil";
+export { MetricLineChart, type MetricSeries } from "./metric-chart";

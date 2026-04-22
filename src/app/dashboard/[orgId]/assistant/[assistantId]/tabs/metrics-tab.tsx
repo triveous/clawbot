@@ -2,7 +2,13 @@
 
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { useRpc } from "@/hooks/use-rpc";
-import { SectionCard, LineChart, Segmented, Icon, type ChartSeries } from "@/components/dashboard";
+import {
+  SectionCard,
+  MetricLineChart,
+  Segmented,
+  Icon,
+  type MetricSeries,
+} from "@/components/dashboard";
 import { makeTrace, formatTimeLabels } from "@/lib/dashboard/traces";
 import type { AssistantResponse } from "@/types/assistant";
 
@@ -16,6 +22,75 @@ const WINDOW_OPTIONS = [
   { value: "24h" as const, label: "24h" },
   { value: "7d" as const, label: "7d" },
 ];
+
+// All chart colours come from the shadcn theme tokens so light/dark swap is
+// automatic and the Monitor palette matches the rest of the dashboard.
+const COLOR = {
+  cpu: "var(--chart-1)", // OpenClaw red (primary)
+  mem: "var(--chart-2)", // cool blue
+  netIn: "var(--chart-3)", // green
+  netOut: "var(--chart-2)",
+  req: "var(--chart-4)", // amber
+} as const;
+
+function Stat({
+  label,
+  values,
+  unit,
+  color,
+}: {
+  label: string;
+  values: number[];
+  unit: string;
+  color: string;
+}) {
+  if (values.length === 0) {
+    return (
+      <div className="chart__stat">
+        <div className="chart__stat-label">
+          <span className="sw" style={{ background: color }} />
+          {label}
+        </div>
+        <div className="chart__stat-grid">
+          <div>
+            <span className="k">cur</span>
+            <span className="v">—</span>
+          </div>
+        </div>
+      </div>
+    );
+  }
+  const cur = values[values.length - 1];
+  const avg = values.reduce((a, b) => a + b, 0) / values.length;
+  const mn = Math.min(...values);
+  const mx = Math.max(...values);
+  return (
+    <div className="chart__stat">
+      <div className="chart__stat-label">
+        <span className="sw" style={{ background: color }} />
+        {label}
+      </div>
+      <div className="chart__stat-grid">
+        <div>
+          <span className="k">cur</span>
+          <span className="v">{cur.toFixed(1)}{unit}</span>
+        </div>
+        <div>
+          <span className="k">avg</span>
+          <span className="v">{avg.toFixed(1)}{unit}</span>
+        </div>
+        <div>
+          <span className="k">min</span>
+          <span className="v">{mn.toFixed(1)}{unit}</span>
+        </div>
+        <div>
+          <span className="k">max</span>
+          <span className="v">{mx.toFixed(1)}{unit}</span>
+        </div>
+      </div>
+    </div>
+  );
+}
 
 export function MetricsTab({ a }: { a: AssistantResponse }) {
   const rpc = useRpc();
@@ -45,69 +120,27 @@ export function MetricsTab({ a }: { a: AssistantResponse }) {
     void loadCpu();
   }, [loadCpu]);
 
-  const cpuSeries: ChartSeries[] = useMemo(() => {
-    const values = cpu.length ? cpu : makeTrace(30, 36, 18, 1);
-    return [
-      {
-        key: "cpu",
-        label: "CPU",
-        color: "var(--primary)",
-        points: values,
-        unit: "%",
-      },
-    ];
-  }, [cpu]);
-
-  // Memory / Net / Req-rate aren't exposed by our metrics API yet. Render
-  // faithful traces so the tab matches the design; once the API supports them
-  // we point these at real data.
-  const memSeries: ChartSeries[] = useMemo(
-    () => [
-      {
-        key: "mem",
-        label: "RAM",
-        color: "oklch(0.58 0.08 230)",
-        points: makeTrace(50, 36, 8, 2),
-        unit: "%",
-      },
-    ],
-    [],
-  );
-
-  const netSeries: ChartSeries[] = useMemo(
-    () => [
-      {
-        key: "in",
-        label: "Ingress",
-        color: "oklch(0.62 0.14 148)",
-        points: makeTrace(15, 36, 20, 3),
-        unit: " MB/s",
-      },
-      {
-        key: "out",
-        label: "Egress",
-        color: "oklch(0.58 0.08 230)",
-        points: makeTrace(25, 36, 30, 4),
-        unit: " MB/s",
-      },
-    ],
-    [],
-  );
-
-  const reqSeries: ChartSeries[] = useMemo(
-    () => [
-      {
-        key: "r",
-        label: "Requests",
-        color: "oklch(0.75 0.15 75)",
-        points: makeTrace(45, 36, 25, 5),
-        unit: "/min",
-      },
-    ],
-    [],
-  );
+  const cpuValues = cpu.length ? cpu : makeTrace(30, 36, 18, 1);
+  const memValues = useMemo(() => makeTrace(50, 36, 8, 2), []);
+  const netInValues = useMemo(() => makeTrace(15, 36, 20, 3), []);
+  const netOutValues = useMemo(() => makeTrace(25, 36, 30, 4), []);
+  const reqValues = useMemo(() => makeTrace(45, 36, 25, 5), []);
 
   const labels = useMemo(() => formatTimeLabels(window, 36), [window]);
+
+  const cpuSeries: MetricSeries[] = [
+    { key: "cpu", label: "CPU", color: COLOR.cpu, points: cpuValues, unit: "%" },
+  ];
+  const memSeries: MetricSeries[] = [
+    { key: "mem", label: "RAM", color: COLOR.mem, points: memValues, unit: "%" },
+  ];
+  const netSeries: MetricSeries[] = [
+    { key: "in", label: "Ingress", color: COLOR.netIn, points: netInValues, unit: " MB/s" },
+    { key: "out", label: "Egress", color: COLOR.netOut, points: netOutValues, unit: " MB/s" },
+  ];
+  const reqSeries: MetricSeries[] = [
+    { key: "r", label: "Requests", color: COLOR.req, points: reqValues, unit: "/min" },
+  ];
 
   return (
     <div className="col" style={{ gap: 16 }}>
@@ -117,62 +150,47 @@ export function MetricsTab({ a }: { a: AssistantResponse }) {
         <button
           type="button"
           className="btn btn--ghost btn--sm"
-          onClick={loadCpu}
+          onClick={() => void loadCpu()}
           title="Refresh metrics"
+          disabled={loading}
         >
           <Icon name="refresh" size={14} />
-          Refresh
+          {loading ? "Refreshing…" : "Refresh"}
         </button>
       </div>
 
-      <SectionCard>
-        <LineChart
-          title={`CPU usage${loading ? " · loading" : ""}`}
-          unit="%"
-          yMax={100}
-          height={240}
-          timeLabels={labels}
-          series={cpuSeries}
-        />
+      <SectionCard title={`CPU usage${loading ? " · loading" : ""}`}>
+        <div className="chart__stats" style={{ marginBottom: 16 }}>
+          <Stat label="CPU" values={cpuValues} unit="%" color={COLOR.cpu} />
+        </div>
+        <MetricLineChart series={cpuSeries} timeLabels={labels} unit="%" yMax={100} height={240} />
         {cpu.length === 0 && !loading ? (
-          <div
-            className="faint"
-            style={{ fontSize: 11, marginTop: 4, fontFamily: "var(--font-geist-mono)" }}
-          >
+          <div className="faint" style={{ fontSize: 11, marginTop: 8, fontFamily: "var(--font-geist-mono)" }}>
             no server data yet — showing preview trace
           </div>
         ) : null}
       </SectionCard>
 
-      <SectionCard>
-        <LineChart
-          title="Network throughput · preview"
-          unit=" MB/s"
-          height={240}
-          timeLabels={labels}
-          series={netSeries}
-        />
+      <SectionCard title="Network throughput · preview">
+        <div className="chart__stats" style={{ marginBottom: 16 }}>
+          <Stat label="Ingress" values={netInValues} unit=" MB/s" color={COLOR.netIn} />
+          <Stat label="Egress" values={netOutValues} unit=" MB/s" color={COLOR.netOut} />
+        </div>
+        <MetricLineChart series={netSeries} timeLabels={labels} unit=" MB/s" height={240} legend />
       </SectionCard>
 
-      <SectionCard>
-        <LineChart
-          title="Memory · preview"
-          unit="%"
-          yMax={100}
-          height={200}
-          timeLabels={labels}
-          series={memSeries}
-        />
+      <SectionCard title="Memory · preview">
+        <div className="chart__stats" style={{ marginBottom: 16 }}>
+          <Stat label="RAM" values={memValues} unit="%" color={COLOR.mem} />
+        </div>
+        <MetricLineChart series={memSeries} timeLabels={labels} unit="%" yMax={100} height={200} />
       </SectionCard>
 
-      <SectionCard>
-        <LineChart
-          title="Requests per minute · preview"
-          unit="/min"
-          height={200}
-          timeLabels={labels}
-          series={reqSeries}
-        />
+      <SectionCard title="Requests per minute · preview">
+        <div className="chart__stats" style={{ marginBottom: 16 }}>
+          <Stat label="Requests" values={reqValues} unit="/min" color={COLOR.req} />
+        </div>
+        <MetricLineChart series={reqSeries} timeLabels={labels} unit="/min" height={200} />
       </SectionCard>
     </div>
   );

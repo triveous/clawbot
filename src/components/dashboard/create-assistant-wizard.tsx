@@ -90,6 +90,7 @@ export function CreateAssistantWizard({
   const [loadingMeta, setLoadingMeta] = useState(true);
 
   const [phase, setPhase] = useState<"form" | "deploying">("form");
+  const [deployedId, setDeployedId] = useState<string | null>(null);
   const [deployError, setDeployError] = useState("");
   const [needCredit, setNeedCredit] = useState(false);
 
@@ -196,10 +197,10 @@ export function CreateAssistantWizard({
         setPhase("form");
         return;
       }
-      // Brief visible moment of the deploying scene, then hand off to the
-      // detail page — its OverviewTab already shows the provisioning step
-      // list driven by real instance_events.
-      setTimeout(() => onDeployed(id), 1600);
+      // Keep the deploying scene mounted and let it poll the assistant
+      // until it's active or errors out. The user can bail to the home
+      // screen any time via the "Notify me" action — we don't auto-route.
+      setDeployedId(id);
     } catch {
       setDeployError("Failed to deploy");
       setPhase("form");
@@ -258,7 +259,18 @@ export function CreateAssistantWizard({
         hostname={hostname}
         plan={selectedPlan}
         region={region}
-        onCancel={() => setPhase("form")}
+        assistantId={deployedId}
+        onBackToList={() => {
+          onClose();
+          if (deployedId) onDeployed(deployedId);
+        }}
+        onCancel={() => {
+          setDeployedId(null);
+          setPhase("form");
+        }}
+        onOpenAssistant={() => {
+          if (deployedId) onDeployed(deployedId);
+        }}
       />
     );
   }
@@ -912,66 +924,138 @@ function NeedCreditModal({
   );
 }
 
+// Ordered provisioning steps shown in the deploy rail. Cloud-init + OpenClaw
+// install are the slow ones (~1-2 min combined), so we advance the UI step
+// based on elapsed time while polling the real assistant status for the
+// terminal transition (active / error).
+const DEPLOY_STEPS = [
+  { label: "Reserving credit", atSec: 0 },
+  { label: "Creating Hetzner server", atSec: 6 },
+  { label: "Applying firewall rules", atSec: 18 },
+  { label: "Waiting for cloud-init", atSec: 30 },
+  { label: "Installing OpenClaw runtime", atSec: 80 },
+  { label: "Registering gateway", atSec: 130 },
+  { label: "Handing you the keys", atSec: 160 },
+] as const;
+
+type DeployState = "pending" | "ready" | "error";
+
 function DeployingScene({
   name,
   hostname,
   plan,
   region,
+  assistantId,
+  onBackToList,
   onCancel,
+  onOpenAssistant,
 }: {
   name: string;
   hostname: string;
   plan: Plan;
   region: string;
+  assistantId: string | null;
+  onBackToList: () => void;
   onCancel: () => void;
+  onOpenAssistant: () => void;
 }) {
-  const steps = useMemo(
-    () => [
-      { label: "Reserving credit", duration: 500 },
-      { label: "Creating Hetzner server", duration: 1200 },
-      { label: "Applying firewall rules", duration: 600 },
-      { label: "Waiting for cloud-init", duration: 1200 },
-      { label: "Installing OpenClaw runtime", duration: 1000 },
-      { label: "Registering gateway", duration: 700 },
-      { label: "Handing you the keys", duration: 500 },
-    ],
-    [],
-  );
-
-  const [cur, setCur] = useState(0);
+  const rpc = useRpc();
+  const [elapsed, setElapsed] = useState(0);
+  const [state, setState] = useState<DeployState>("pending");
+  const [errorMsg, setErrorMsg] = useState("");
   const [log, setLog] = useState<string[]>([]);
 
-  // Step-advancing timer — state update is the whole point of this effect.
+  // Elapsed-seconds ticker — drives the visible step progression.
+   
+  useEffect(() => {
+    if (state !== "pending") return;
+    const startedAt = Date.now();
+    const id = setInterval(() => setElapsed((Date.now() - startedAt) / 1000), 500);
+    return () => clearInterval(id);
+  }, [state]);
+   
+
+  // Poll the real assistant until we see a terminal status. 4s is a good
+  // trade between timeliness and Hetzner rate limits.
+  const poll = useCallback(async () => {
+    if (!assistantId) return;
+    try {
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const res = await (rpc.api.assistants as any)[":id"].$get({ param: { id: assistantId } });
+      if (!res.ok) return;
+      const data = (await res.json()) as { status: string; lastErrorAt: string | null };
+      if (data.status === "active") setState("ready");
+      else if (data.status === "error") {
+        setState("error");
+        setErrorMsg(data.lastErrorAt ? `Failed at ${new Date(data.lastErrorAt).toLocaleString()}` : "Provisioning failed.");
+      }
+    } catch {
+      /* transient — next tick retries */
+    }
+  }, [assistantId, rpc]);
+
+  // Status poll — the only way to know when provisioning completes.
   /* eslint-disable react-hooks/set-state-in-effect */
   useEffect(() => {
-    if (cur >= steps.length) return;
-    const line = `[${new Date().toISOString().slice(11, 19)}] ${steps[cur].label}…`;
-    setLog((l) => [...l, line]);
-    const t = setTimeout(() => setCur((n) => n + 1), steps[cur].duration);
-    return () => clearTimeout(t);
-  }, [cur, steps]);
+    if (!assistantId || state !== "pending") return;
+    void poll();
+    const id = setInterval(() => void poll(), 4000);
+    return () => clearInterval(id);
+  }, [assistantId, state, poll]);
   /* eslint-enable react-hooks/set-state-in-effect */
 
-  const pct = Math.min(100, Math.round((cur / steps.length) * 100));
-  const done = cur >= steps.length;
+  // Append a terminal line whenever the derived "current step" advances.
+  const cur = useMemo(() => {
+    let idx = 0;
+    for (let i = 0; i < DEPLOY_STEPS.length; i++) {
+      if (elapsed >= DEPLOY_STEPS[i].atSec) idx = i;
+    }
+    return state === "ready" ? DEPLOY_STEPS.length : idx;
+  }, [elapsed, state]);
+
+  const lastLoggedCur = useRef(-1);
+  useEffect(() => {
+    if (cur === lastLoggedCur.current) return;
+    const step = DEPLOY_STEPS[Math.min(cur, DEPLOY_STEPS.length - 1)];
+    if (!step) return;
+    lastLoggedCur.current = cur;
+    const line = `[${new Date().toISOString().slice(11, 19)}] ${step.label}…`;
+    // eslint-disable-next-line react-hooks/set-state-in-effect
+    setLog((l) => [...l, line]);
+  }, [cur]);
+
+  const pct =
+    state === "ready"
+      ? 100
+      : state === "error"
+        ? Math.round((cur / DEPLOY_STEPS.length) * 100)
+        : Math.min(95, Math.round((cur / DEPLOY_STEPS.length) * 100));
+
+  const heading =
+    state === "ready" ? (
+      <>
+        Your assistant is <em>live</em>.
+      </>
+    ) : state === "error" ? (
+      <>
+        Something went <em>wrong</em>.
+      </>
+    ) : (
+      <>
+        Spinning up <em>{name}</em>…
+      </>
+    );
+
+  const eyebrow =
+    state === "ready" ? "Ready" : state === "error" ? "Failed" : "Provisioning";
 
   return (
     <div className="faw faw--deploy">
       <div className="faw__bg" aria-hidden />
       <div className="deploy">
         <div className="deploy__left">
-          <div className="deploy__eyebrow">{done ? "Ready" : "Provisioning"}</div>
-          <h1 className="deploy__h">
-            {done ? (
-              <>
-                Your assistant is <em>live</em>.
-              </>
-            ) : (
-              <>
-                Spinning up <em>{name}</em>…
-              </>
-            )}
-          </h1>
+          <div className="deploy__eyebrow">{eyebrow}</div>
+          <h1 className="deploy__h">{heading}</h1>
           <div className="deploy__host">{hostname}</div>
 
           <div className="deploy__progress">
@@ -979,36 +1063,80 @@ function DeployingScene({
           </div>
 
           <ol className="deploy__steps">
-            {steps.map((s, i) => {
-              const state: "done" | "current" | "pending" =
-                i < cur ? "done" : i === cur ? "current" : "pending";
+            {DEPLOY_STEPS.map((s, i) => {
+              const stepState: "done" | "current" | "pending" | "error" =
+                state === "error" && i === cur
+                  ? "error"
+                  : i < cur
+                    ? "done"
+                    : i === cur && state === "pending"
+                      ? "current"
+                      : i < DEPLOY_STEPS.length && state === "ready"
+                        ? "done"
+                        : "pending";
               return (
-                <li key={s.label} className={`deploy__step is-${state}`}>
+                <li key={s.label} className={`deploy__step is-${stepState}`}>
                   <span className="deploy__step-dot">
-                    {state === "done" ? (
+                    {stepState === "done" ? (
                       <Icon name="check" size={11} />
-                    ) : state === "current" ? (
+                    ) : stepState === "current" ? (
                       <span className="deploy__spin" />
+                    ) : stepState === "error" ? (
+                      <Icon name="x" size={11} />
                     ) : (
                       i + 1
                     )}
                   </span>
                   <span className="deploy__step-label">{s.label}</span>
-                  {state === "current" ? <span className="deploy__step-t">…</span> : null}
+                  {stepState === "current" ? <span className="deploy__step-t">…</span> : null}
                 </li>
               );
             })}
           </ol>
 
-          {!done ? (
-            <button
-              type="button"
-              className="btn btn--ghost btn--sm"
-              style={{ marginTop: 20 }}
-              onClick={onCancel}
+          {state === "pending" ? (
+            <div
+              className="faint"
+              style={{ marginTop: 14, fontSize: 12, lineHeight: 1.5, maxWidth: 380 }}
             >
-              Back to form
-            </button>
+              This usually takes 2&ndash;3 minutes. You can wait here, or head back and we&rsquo;ll
+              surface it in the notifications bell when your assistant is ready.
+            </div>
+          ) : null}
+
+          <div style={{ marginTop: 20, display: "flex", gap: 8, flexWrap: "wrap" }}>
+            {state === "ready" ? (
+              <button type="button" className="fa-hero__primary" onClick={onOpenAssistant}>
+                <Icon name="arrowRight" size={14} />
+                Open assistant
+              </button>
+            ) : state === "error" ? (
+              <>
+                <button type="button" className="btn btn--primary" onClick={onOpenAssistant}>
+                  <Icon name="activity" size={14} />
+                  View details
+                </button>
+                <button type="button" className="btn btn--ghost" onClick={onBackToList}>
+                  Back to dashboard
+                </button>
+              </>
+            ) : (
+              <>
+                <button type="button" className="btn btn--ghost" onClick={onBackToList}>
+                  <Icon name="bell" size={14} />
+                  Notify me when ready
+                </button>
+                <button type="button" className="btn btn--ghost btn--sm" onClick={onCancel}>
+                  Back to form
+                </button>
+              </>
+            )}
+          </div>
+
+          {errorMsg ? (
+            <div className="field__err" style={{ marginTop: 12, maxWidth: 440 }}>
+              {errorMsg}
+            </div>
           ) : null}
         </div>
 
@@ -1028,11 +1156,19 @@ function DeployingScene({
                   {line}
                 </div>
               ))}
-              {!done ? (
+              {state === "pending" ? (
                 <div className="deploy__term-line">
                   <span className="fa-hero__caret" />
                 </div>
-              ) : null}
+              ) : state === "ready" ? (
+                <div className="deploy__term-line" style={{ color: "var(--success)" }}>
+                  [ok] assistant online · gateway reachable
+                </div>
+              ) : (
+                <div className="deploy__term-line" style={{ color: "var(--destructive)" }}>
+                  [err] provisioning failed — open the detail page for logs
+                </div>
+              )}
             </div>
           </div>
         </div>
