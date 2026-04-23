@@ -50,6 +50,15 @@ Transport decision needed: OpenClaw HTTP surface / SSH exec / lightweight side d
 
 ---
 
+## Dashboard content / notifications backend _(from Phase 4e)_
+
+- [ ] **Notifications backend** — `/api/notifications` endpoint backed by `notifications` table; mark-read / dismiss mutations; per-user + per-org feed; webhook-driven sources (billing, provisioning, platform announcements). Today the top-bar bell and the `/notifications` page both render a clearly-labelled seed list; the UI is ready to swap for a real endpoint.
+- [ ] **Notification preferences backend** — move `cb:notifprefs` and `cb:notif-prefs` (settings + delivery toggles) to a `user_notification_prefs` table. The Settings → Notifications tab and the notifications-page delivery panel both write to localStorage today.
+- [ ] **In-dashboard docs rendering** — Markdown renderer for `docs/*.md` surfaced under `/dashboard/:org/docs/:slug`. The cards grid is live and already points at hash anchors; wiring just needs a markdown loader + syntax highlighting.
+- [ ] **Notifications bell → shared store with notifications page** — right now both sources seed their own list; once `/api/notifications` exists, consolidate them behind a single `useNotifications` hook so mark-read in one surface reflects in the other.
+
+---
+
 ## Ops / Reliability
 
 - [ ] **Idempotency key on provisioning `start()`** — Pass `instanceId` as workflow run key to prevent duplicate runs on retry. Requires confirming useworkflow.dev `start()` supports a run key; otherwise add `instances.workflowRunId` guard.

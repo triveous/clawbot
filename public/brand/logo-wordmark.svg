@@ -1,0 +1,35 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 230 48" fill="none">
+  
+  <g transform="translate(-2 0) scale(0.82)">
+    <g fill="#d94a2a">
+      <path d="M 19 30&#xA;               C 15 28, 11 24, 10 20&#xA;               C 9 18, 10 16, 12 16&#xA;               L 15.5 17&#xA;               C 14.5 15, 16 13, 18 13.5&#xA;               L 21 15&#xA;               C 22.5 15.5, 23 17, 22 18.5&#xA;               L 20.5 20.5&#xA;               C 21.5 22, 21 24, 19 25&#xA;               Z"></path>
+      <path d="M 37 30&#xA;               C 41 28, 45 24, 46 20&#xA;               C 47 18, 46 16, 44 16&#xA;               L 40.5 17&#xA;               C 41.5 15, 40 13, 38 13.5&#xA;               L 35 15&#xA;               C 33.5 15.5, 33 17, 34 18.5&#xA;               L 35.5 20.5&#xA;               C 34.5 22, 35 24, 37 25&#xA;               Z"></path>
+      <path d="M 14 18.5 L 17.5 19.5 L 16 21 Z" fill="#f7f1e8"></path>
+      <path d="M 42 18.5 L 38.5 19.5 L 40 21 Z" fill="#f7f1e8"></path>
+    </g>
+
+    <g stroke="#d94a2a" stroke-width="2.6" stroke-linecap="round">
+      <path d="M 18 36 L 13 38"></path>
+      <path d="M 19 39 L 14 42"></path>
+      <path d="M 21 42 L 17 45"></path>
+      <path d="M 38 36 L 43 38"></path>
+      <path d="M 37 39 L 42 42"></path>
+      <path d="M 35 42 L 39 45"></path>
+    </g>
+
+    <path d="M 14 32&#xA;             C 14 24, 20 19, 28 19&#xA;             C 36 19, 42 24, 42 32&#xA;             C 42 38, 36 41, 28 41&#xA;             C 20 41, 14 38, 14 32 Z" fill="#d94a2a"></path>
+
+    <g>
+      <rect x="23" y="21" width="1.6" height="3" rx="0.8" fill="#d94a2a"></rect>
+      <rect x="31.4" y="21" width="1.6" height="3" rx="0.8" fill="#d94a2a"></rect>
+      <circle cx="23.8" cy="22" r="1.8" fill="#f7f1e8"></circle>
+      <circle cx="32.2" cy="22" r="1.8" fill="#f7f1e8"></circle>
+      <circle cx="24" cy="22" r="0.9" fill="#2a1f19"></circle>
+      <circle cx="32" cy="22" r="0.9" fill="#2a1f19"></circle>
+    </g>
+
+    <path d="M 25 32 Q 28 34 31 32" stroke="#2a1f19" stroke-width="1.4" stroke-linecap="round" fill="none" opacity="0.55"></path>
+  </g>
+
+  <text x="52" y="33" font-family="Geist, system-ui, sans-serif" font-size="22" font-weight="700" fill="#2a1f19" letter-spacing="-0.5">Clawbot</text>
+</svg>

@@ -1,14 +1,21 @@
 "use client";
 
-import { useState, useEffect, useCallback, use } from "react";
+import { use, useCallback, useEffect, useMemo, useState } from "react";
 import Link from "next/link";
+import { useRouter, useSearchParams } from "next/navigation";
 import { useRpc } from "@/hooks/use-rpc";
-import { Button } from "@/components/ui/button";
-import { Badge } from "@/components/ui/badge";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
-import type { AssistantResponse, AccessMode } from "@/types/assistant";
+import {
+  Icon,
+  StatusPill,
+  Segmented,
+  Callout,
+  CreateAssistantDrawer,
+  CreateAssistantWizard,
+  FirstAssistantHero,
+} from "@/components/dashboard";
+import { useOrganization } from "@clerk/nextjs";
+import { relTime } from "@/lib/dashboard/format";
+import type { AssistantResponse, AssistantStatus } from "@/types/assistant";
 
 type Plan = {
   id: string;
@@ -25,51 +32,68 @@ type Credit = {
   currentPeriodEnd: string | null;
 };
 
-const STATUS_VARIANT: Record<string, "default" | "secondary" | "destructive" | "outline"> = {
-  active: "default",
-  creating: "secondary",
-  stopped: "outline",
-  error: "destructive",
+type Filter = "all" | AssistantStatus;
+
+const FILTER_OPTIONS: { value: Filter; label: string }[] = [
+  { value: "all", label: "All" },
+  { value: "active", label: "Active" },
+  { value: "creating", label: "Provisioning" },
+  { value: "error", label: "Error" },
+  { value: "stopped", label: "Stopped" },
+];
+
+const REGION_LABELS: Record<string, string> = {
+  fsn1: "Falkenstein",
+  nbg1: "Nuremberg",
+  hel1: "Helsinki",
 };
 
-const ACCESS_MODE_LABELS: Record<AccessMode, string> = {
-  ssh: "SSH",
-  tailscale_serve: "Tailscale",
-};
-
-function formatPrice(cents: number, currency: string) {
-  return new Intl.NumberFormat("en-US", {
-    style: "currency",
-    currency: currency.toUpperCase(),
-    minimumFractionDigits: 0,
-  }).format(cents / 100);
+function regionLabel(region: string) {
+  return REGION_LABELS[region] ?? region;
 }
 
-export default function DashboardPage({
+function accessLabel(mode: AssistantResponse["accessMode"]) {
+  return mode === "ssh" ? "SSH" : "Tailscale";
+}
+
+export default function AssistantsPage({
   params,
 }: {
   params: Promise<{ orgId: string }>;
 }) {
   const { orgId } = use(params);
   const rpc = useRpc();
+  const router = useRouter();
 
   const [assistants, setAssistants] = useState<AssistantResponse[]>([]);
   const [plans, setPlans] = useState<Plan[]>([]);
   const [credits, setCredits] = useState<Credit[]>([]);
   const [loading, setLoading] = useState(true);
+  const [filter, setFilter] = useState<Filter>("all");
+  const [retrying, setRetrying] = useState<Record<string, boolean>>({});
+  const [drawerOpen, setDrawerOpen] = useState(false);
+  const [wizardOpen, setWizardOpen] = useState(false);
+  const { organization } = useOrganization();
+  const searchParams = useSearchParams();
 
-  // Create form
-  const [name, setName] = useState("");
-  const [planId, setPlanId] = useState("");
-  const [region, setRegion] = useState("fsn1");
-  const [accessMode, setAccessMode] = useState<AccessMode>("ssh");
-  const [sshAllowedIps, setSshAllowedIps] = useState("");
-  const [tailscaleAuthKey, setTailscaleAuthKey] = useState("");
-  const [tsVerified, setTsVerified] = useState(false);
-  const [tsVerifying, setTsVerifying] = useState(false);
-  const [tsError, setTsError] = useState("");
-  const [creating, setCreating] = useState(false);
-  const [createError, setCreateError] = useState("");
+  // When the command palette dispatches "Create assistant", it sends us
+  // here with `?create=1`. Pop the drawer for populated orgs, the wizard
+  // for empty ones; then strip the query so refreshes don't keep firing.
+  useEffect(() => {
+    if (searchParams?.get("create") !== "1") return;
+    // Decision between drawer (fast) vs wizard (immersive) happens below
+    // based on whether there are assistants. We wait until the initial load
+    // resolves, so this effect flips the right modal based on real state.
+    const target = assistants.length === 0 ? "wizard" : "drawer";
+    if (target === "wizard") {
+       
+      setWizardOpen(true);
+    } else {
+       
+      setDrawerOpen(true);
+    }
+    router.replace(`/dashboard/${orgId}`);
+  }, [searchParams, assistants.length, router, orgId]);
 
   const loadAll = useCallback(async () => {
     try {
@@ -85,7 +109,6 @@ export default function DashboardPage({
       if (pRes.ok) {
         const d = (await pRes.json()) as { plans: Plan[] };
         setPlans(d.plans);
-        if (d.plans.length > 0 && !planId) setPlanId(d.plans[0].id);
       }
       if (cRes.ok) {
         const d = (await cRes.json()) as { credits: Credit[] };
@@ -94,318 +117,228 @@ export default function DashboardPage({
     } finally {
       setLoading(false);
     }
-  }, [rpc, planId]);
+  }, [rpc]);
 
-  useEffect(() => { loadAll(); }, [loadAll]);
+  useEffect(() => {
+    void loadAll();
+  }, [loadAll]);
 
-  const availableCredits = credits.filter(
-    (c) =>
-      c.status === "active" &&
-      !c.consumedByAssistantId &&
-      c.currentPeriodEnd &&
-      new Date(c.currentPeriodEnd) > new Date(),
+  const availableCredits = useMemo(
+    () =>
+      credits.filter(
+        (c) =>
+          c.status === "active" &&
+          !c.consumedByAssistantId &&
+          c.currentPeriodEnd &&
+          new Date(c.currentPeriodEnd) > new Date(),
+      ),
+    [credits],
   );
 
-  async function verifyTailscaleKey() {
-    if (!tailscaleAuthKey.trim()) return;
-    setTsVerifying(true);
-    setTsError("");
-    setTsVerified(false);
-    try {
-      const res = await rpc.api.tailscale.verify.$post({
-        json: { authKey: tailscaleAuthKey.trim() },
-      });
-      const data = (await res.json()) as { valid: boolean; expiresAt?: string | null };
-      if (res.ok && data.valid) {
-        setTsVerified(true);
-      } else {
-        setTsError("Key is invalid or expired");
-      }
-    } catch {
-      setTsError("Failed to verify key");
-    } finally {
-      setTsVerifying(false);
-    }
-  }
-
-  async function create() {
-    if (!name.trim() || !planId) return;
-    if (accessMode === "tailscale_serve" && !tsVerified) {
-      setCreateError("Verify your Tailscale auth key first");
-      return;
-    }
-    setCreating(true);
-    setCreateError("");
-    try {
-      const body: Record<string, string> = { name: name.trim(), planId, region, accessMode };
-      if (sshAllowedIps.trim()) body.sshAllowedIps = sshAllowedIps.trim();
-      if (accessMode === "tailscale_serve") body.tailscaleAuthKey = tailscaleAuthKey.trim();
-
-      const res = await rpc.api.assistants.$post({ json: body });
-      if (!res.ok) {
-        const err = (await res.json()) as { message?: string };
-        setCreateError(err.message ?? "Failed to create assistant");
-        return;
-      }
-      setName("");
-      setTailscaleAuthKey("");
-      setSshAllowedIps("");
-      setTsVerified(false);
-      await loadAll();
-    } catch {
-      setCreateError("Failed to create assistant");
-    } finally {
-      setCreating(false);
-    }
-  }
+  const runningCount = assistants.filter((a) => a.status === "active").length;
+  const rows = assistants.filter((a) => filter === "all" || a.status === filter);
+  const planById = useMemo(() => new Map(plans.map((p) => [p.id, p])), [plans]);
 
   async function retry(id: string) {
+    setRetrying((prev) => ({ ...prev, [id]: true }));
     try {
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       await (rpc.api.assistants as any)[":id"].retry.$post({ param: { id } });
       await loadAll();
-    } catch {
-      // ignore
+    } finally {
+      setRetrying((prev) => ({ ...prev, [id]: false }));
     }
   }
 
-  async function del(id: string) {
-    try {
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      await (rpc.api.assistants as any)[":id"].$delete({ param: { id } });
-      await loadAll();
-    } catch {
-      // ignore
-    }
+  if (loading) {
+    return (
+      <div className="page__loading">
+        <Icon name="bot" size={20} />
+        Loading assistants…
+      </div>
+    );
   }
 
-  const selectedPlan = plans.find((p) => p.id === planId);
-  const canCreate =
-    !!name.trim() &&
-    !!planId &&
-    (accessMode !== "tailscale_serve" || tsVerified);
+  if (assistants.length === 0) {
+    return (
+      <>
+        <FirstAssistantHero
+          orgName={organization?.name ?? "this workspace"}
+          onStart={() => setWizardOpen(true)}
+          paused={wizardOpen}
+        />
+        <CreateAssistantWizard
+          orgId={orgId}
+          isFirst
+          open={wizardOpen}
+          onClose={() => setWizardOpen(false)}
+          onDeployed={(id) => {
+            setWizardOpen(false);
+            router.push(`/dashboard/${orgId}/assistant/${id}`);
+          }}
+        />
+      </>
+    );
+  }
 
   return (
-    <div className="space-y-6">
-      <div className="flex items-center justify-between">
+    <div>
+      <div className="page__head">
         <div>
-          <h1 className="text-2xl font-bold">Assistants</h1>
-          <p className="mt-0.5 text-sm text-muted-foreground">
-            {availableCredits.length} credit{availableCredits.length !== 1 ? "s" : ""} available ·{" "}
-            <Link href={`/dashboard/${orgId}/credits`} className="underline">
-              {credits.length} total
+          <h1 className="page__title">
+            Assistants{" "}
+            <span className="faint" style={{ fontSize: 20, fontWeight: 400 }}>
+              {assistants.length}
+            </span>
+          </h1>
+          <div className="page__sub">
+            {availableCredits.length} credit{availableCredits.length !== 1 ? "s" : ""} available
+            {" · "}
+            {runningCount} running
+            {" · "}
+            <Link href={`/dashboard/${orgId}/billing`} className="faint">
+              view billing
             </Link>
-          </p>
+          </div>
+        </div>
+        <div className="page__actions">
+          <Segmented<Filter> value={filter} onChange={setFilter} options={FILTER_OPTIONS} />
+          <button
+            type="button"
+            className="btn btn--ghost"
+            onClick={() => setWizardOpen(true)}
+            title="Immersive create flow"
+          >
+            <Icon name="zap" size={14} />
+            Wizard
+          </button>
+          <button
+            type="button"
+            className="btn btn--primary"
+            onClick={() => setDrawerOpen(true)}
+          >
+            <Icon name="plus" size={14} />
+            New assistant
+          </button>
         </div>
       </div>
 
-      {/* Create form */}
-      <Card>
-        <CardHeader>
-          <CardTitle>New Assistant</CardTitle>
-        </CardHeader>
-        <CardContent className="space-y-4">
-          <div className="flex flex-wrap items-end gap-3">
-            <div className="flex flex-col gap-1">
-              <Label htmlFor="assistant-name">Name</Label>
-              <Input
-                id="assistant-name"
-                placeholder="My assistant"
-                value={name}
-                onChange={(e) => setName(e.target.value)}
-                onKeyDown={(e) => e.key === "Enter" && create()}
-                className="w-48"
-              />
-            </div>
-
-            <div className="flex flex-col gap-1">
-              <Label htmlFor="plan">Plan</Label>
-              {plans.length === 0 ? (
-                <p className="text-xs text-muted-foreground py-1.5">No plans — ask admin</p>
-              ) : (
-                <select
-                  id="plan"
-                  value={planId}
-                  onChange={(e) => setPlanId(e.target.value)}
-                  className="rounded-lg border border-border bg-background px-3 py-1.5 text-sm"
-                >
-                  {plans.map((p) => (
-                    <option key={p.id} value={p.id}>
-                      {p.displayName} — {formatPrice(p.priceCents, p.currency)}/mo
-                    </option>
-                  ))}
-                </select>
-              )}
-            </div>
-
-            <div className="flex flex-col gap-1">
-              <Label htmlFor="region">Region</Label>
-              <select
-                id="region"
-                value={region}
-                onChange={(e) => setRegion(e.target.value)}
-                className="rounded-lg border border-border bg-background px-3 py-1.5 text-sm"
-              >
-                <option value="fsn1">fsn1 — Falkenstein</option>
-                <option value="nbg1">nbg1 — Nuremberg</option>
-                <option value="hel1">hel1 — Helsinki</option>
-              </select>
-            </div>
-
-            <div className="flex flex-col gap-1">
-              <Label htmlFor="access-mode">Access</Label>
-              <select
-                id="access-mode"
-                value={accessMode}
-                onChange={(e) => {
-                  setAccessMode(e.target.value as AccessMode);
-                  setTsVerified(false);
-                  setTsError("");
-                }}
-                className="rounded-lg border border-border bg-background px-3 py-1.5 text-sm"
-              >
-                <option value="ssh">SSH</option>
-                <option value="tailscale_serve">Tailscale</option>
-              </select>
-            </div>
-
-            {accessMode === "ssh" && (
-              <div className="flex flex-col gap-1">
-                <Label htmlFor="ssh-allowed-ips">Allowed IPs</Label>
-                <Input
-                  id="ssh-allowed-ips"
-                  placeholder="0.0.0.0/0"
-                  value={sshAllowedIps}
-                  onChange={(e) => setSshAllowedIps(e.target.value)}
-                  className="w-36"
-                />
-              </div>
-            )}
-
-            {accessMode === "tailscale_serve" && (
-              <div className="flex flex-col gap-1">
-                <Label htmlFor="ts-auth-key">Tailscale Auth Key</Label>
-                <div className="flex gap-2">
-                  <Input
-                    id="ts-auth-key"
-                    type="password"
-                    placeholder="tskey-auth-…"
-                    value={tailscaleAuthKey}
-                    onChange={(e) => {
-                      setTailscaleAuthKey(e.target.value);
-                      setTsVerified(false);
-                      setTsError("");
-                    }}
-                    className="w-44"
-                  />
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    onClick={verifyTailscaleKey}
-                    disabled={tsVerifying || !tailscaleAuthKey.trim()}
-                  >
-                    {tsVerifying ? "…" : tsVerified ? "✓ Valid" : "Verify"}
-                  </Button>
-                </div>
-                {tsError && <p className="text-xs text-destructive">{tsError}</p>}
-              </div>
-            )}
-
-            <Button onClick={create} disabled={creating || !canCreate || plans.length === 0}>
-              {creating ? "Creating…" : "Create"}
-            </Button>
-          </div>
-
-          {selectedPlan?.tagline && (
-            <p className="text-xs text-muted-foreground">{selectedPlan.tagline}</p>
-          )}
-          {availableCredits.length === 0 && plans.length > 0 && (
-            <p className="text-xs text-amber-600">
-              No available credit for this plan.{" "}
-              <Link href={`/dashboard/${orgId}/credits`} className="underline">
-                View credits
-              </Link>
-            </p>
-          )}
-          {createError && <p className="text-sm text-destructive">{createError}</p>}
-        </CardContent>
-      </Card>
-
-      {/* Assistant list */}
-      {loading ? (
-        <p className="text-sm text-muted-foreground">Loading…</p>
-      ) : assistants.length === 0 ? (
-        <p className="text-sm text-muted-foreground">No assistants yet.</p>
-      ) : (
-        <div className="space-y-2">
-          {assistants.map((a) => {
-            const plan = plans.find((p) => p.id === a.planId);
-            return (
-              <Card
-                key={a.id}
-                className={a.status === "error" ? "border-destructive" : ""}
-              >
-                <CardContent className="py-3">
-                  <div className="flex items-center justify-between gap-3">
-                    <div className="flex min-w-0 flex-wrap items-center gap-3">
-                      <Badge variant={STATUS_VARIANT[a.status] ?? "outline"}>
-                        {a.status}
-                      </Badge>
-                      <Link
-                        href={`/dashboard/${orgId}/assistant/${a.id}`}
-                        className="font-medium hover:underline"
-                      >
-                        {a.name}
-                      </Link>
-                      {plan && (
-                        <Badge variant="outline" className="text-xs">
-                          {plan.displayName}
-                        </Badge>
-                      )}
-                      <span className="text-xs text-muted-foreground">{a.region}</span>
-                      <span className="text-xs text-muted-foreground">
-                        {ACCESS_MODE_LABELS[a.accessMode] ?? a.accessMode}
-                      </span>
-                      {a.ipv4 && (
-                        <span className="font-mono text-xs text-muted-foreground">
-                          {a.ipv4}
-                          {a.gatewayPort ? `:${a.gatewayPort}` : ""}
-                        </span>
-                      )}
-                      {a.hostname && (
-                        <span className="font-mono text-xs text-muted-foreground truncate max-w-[200px]">
-                          {a.hostname}
-                        </span>
-                      )}
-                    </div>
-                    <div className="flex shrink-0 gap-2">
-                      {a.status === "error" && (
-                        <Button variant="outline" size="sm" onClick={() => retry(a.id)}>
-                          Retry
-                        </Button>
-                      )}
-                      <Button variant="destructive" size="sm" onClick={() => del(a.id)}>
-                        Delete
-                      </Button>
-                    </div>
-                  </div>
-                  {a.status === "error" && a.lastErrorAt && (
-                    <p className="mt-2 text-xs text-destructive">
-                      Failed {new Date(a.lastErrorAt).toLocaleString()} ·{" "}
-                      <Link
-                        href={`/dashboard/${orgId}/assistant/${a.id}`}
-                        className="underline"
-                      >
-                        details
-                      </Link>
-                    </p>
-                  )}
-                </CardContent>
-              </Card>
-            );
-          })}
+      {availableCredits.length === 0 ? (
+        <div style={{ marginBottom: 16 }}>
+          <Callout kind="warn" icon="alert" title="No available credits">
+            You&rsquo;re at your plan limit.{" "}
+            <Link href={`/dashboard/${orgId}/pricing`} style={{ textDecoration: "underline" }}>
+              Upgrade
+            </Link>{" "}
+            or delete an assistant to free a credit.
+          </Callout>
         </div>
-      )}
+      ) : null}
+
+      <div className="card">
+        <div
+          className="asst-row"
+          style={{
+            padding: "10px 18px",
+            background: "var(--db-bg-2)",
+            borderBottom: "1px solid var(--db-hair)",
+            cursor: "default",
+            fontSize: 11,
+            color: "var(--db-text-faint)",
+            textTransform: "uppercase",
+            letterSpacing: "0.08em",
+            fontWeight: 600,
+          }}
+        >
+          <span />
+          <span>Name</span>
+          <span>Status</span>
+          <span>Plan</span>
+          <span>Address</span>
+          <span>Created</span>
+          <span />
+        </div>
+        {rows.length === 0 ? (
+          <div style={{ padding: 40, textAlign: "center", color: "var(--muted-foreground)" }}>
+            No assistants match this filter.
+          </div>
+        ) : (
+          rows.map((a) => {
+            const plan = planById.get(a.planId);
+            const address = a.ipv4
+              ? `${a.ipv4}${a.gatewayPort ? `:${a.gatewayPort}` : ""}`
+              : a.hostname ?? "—";
+            return (
+              <Link
+                key={a.id}
+                href={`/dashboard/${orgId}/assistant/${a.id}`}
+                className="asst-row"
+              >
+                <div className="asst-row__icon">
+                  <Icon name="bot" size={14} />
+                </div>
+                <div>
+                  <div className="asst-row__name">{a.name}</div>
+                  <div className="asst-row__sub">
+                    {regionLabel(a.region)} · {accessLabel(a.accessMode)}
+                  </div>
+                </div>
+                <StatusPill status={a.status} />
+                <span className="dim" style={{ fontSize: 12 }}>
+                  {plan?.displayName ?? "—"}
+                </span>
+                <span className="mono dim">{address}</span>
+                <span className="dim" style={{ fontSize: 12 }}>
+                  {relTime(a.createdAt)}
+                </span>
+                <div
+                  style={{ display: "flex", gap: 6 }}
+                  onClick={(e) => {
+                    // don't let button clicks trigger the row link navigation
+                    e.stopPropagation();
+                    e.preventDefault();
+                  }}
+                >
+                  {a.status === "error" ? (
+                    <button
+                      type="button"
+                      className="btn btn--ghost btn--sm"
+                      disabled={!!retrying[a.id]}
+                      onClick={() => retry(a.id)}
+                    >
+                      <Icon name="refresh" size={14} />
+                      {retrying[a.id] ? "Retrying…" : "Retry"}
+                    </button>
+                  ) : null}
+                  <span className="btn btn--ghost btn--sm" aria-hidden>
+                    <Icon name="chevRight" size={14} />
+                  </span>
+                </div>
+              </Link>
+            );
+          })
+        )}
+      </div>
+
+      <CreateAssistantDrawer
+        open={drawerOpen}
+        onClose={() => setDrawerOpen(false)}
+        onCreated={async (id) => {
+          await loadAll();
+          router.push(`/dashboard/${orgId}/assistant/${id}`);
+        }}
+      />
+
+      <CreateAssistantWizard
+        orgId={orgId}
+        isFirst={false}
+        open={wizardOpen}
+        onClose={() => setWizardOpen(false)}
+        onDeployed={(id) => {
+          setWizardOpen(false);
+          router.push(`/dashboard/${orgId}/assistant/${id}`);
+        }}
+      />
     </div>
   );
 }
