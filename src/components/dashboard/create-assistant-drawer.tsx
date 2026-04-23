@@ -69,9 +69,6 @@ export function CreateAssistantDrawer({
   const [accessMode, setAccessMode] = useState<AccessMode>("ssh");
   const [sshAllowedIps, setSshAllowedIps] = useState("0.0.0.0/0");
   const [tailscaleAuthKey, setTailscaleAuthKey] = useState("");
-  const [tsVerifying, setTsVerifying] = useState(false);
-  const [tsVerified, setTsVerified] = useState(false);
-  const [tsError, setTsError] = useState("");
 
   const [creating, setCreating] = useState(false);
   const [createError, setCreateError] = useState("");
@@ -131,31 +128,12 @@ export function CreateAssistantDrawer({
   const selectedPlan = plans.find((p) => p.id === planId) ?? null;
   const selectedPlanHasCredit = selectedPlan ? (availableByPlan.get(selectedPlan.id) ?? 0) > 0 : false;
 
-  async function verifyTs() {
-    if (!tailscaleAuthKey.trim()) return;
-    setTsVerifying(true);
-    setTsError("");
-    setTsVerified(false);
-    try {
-      const res = await rpc.api.tailscale.verify.$post({
-        json: { authKey: tailscaleAuthKey.trim() },
-      });
-      const data = (await res.json()) as { valid: boolean };
-      if (res.ok && data.valid) setTsVerified(true);
-      else setTsError("Key is invalid or expired.");
-    } catch {
-      setTsError("Couldn't reach Tailscale.");
-    } finally {
-      setTsVerifying(false);
-    }
-  }
-
   const canCreate =
     !!name.trim() &&
     !!planId &&
     !!region &&
     selectedPlanHasCredit &&
-    (accessMode !== "tailscale_serve" || tsVerified) &&
+    (accessMode !== "tailscale_serve" || !!tailscaleAuthKey.trim()) &&
     !creating;
 
   async function deploy() {
@@ -188,8 +166,6 @@ export function CreateAssistantDrawer({
       // Reset for next open
       setName("");
       setTailscaleAuthKey("");
-      setTsVerified(false);
-      setTsError("");
     } catch {
       setCreateError("Failed to deploy");
     } finally {
@@ -322,11 +298,7 @@ export function CreateAssistantDrawer({
                 <Segmented
                   fullWidth
                   value={accessMode}
-                  onChange={(next) => {
-                    setAccessMode(next);
-                    setTsVerified(false);
-                    setTsError("");
-                  }}
+                  onChange={setAccessMode}
                   options={ACCESS_OPTIONS}
                 />
               </Field>
@@ -343,35 +315,18 @@ export function CreateAssistantDrawer({
                   />
                 </Field>
               ) : (
-                <Field
-                  label="Tailscale auth key"
-                  hint="Ephemeral reusable key. Verified once, never stored."
-                  err={tsError || undefined}
-                >
-                  <div className="flex gap-2">
-                    <input
-                      className="input flex-1"
-                      type="password"
-                      placeholder="tskey-auth-…"
-                      value={tailscaleAuthKey}
-                      onChange={(e) => {
-                        setTailscaleAuthKey(e.target.value);
-                        setTsVerified(false);
-                        setTsError("");
-                      }}
-                    />
-                    <button
-                      type="button"
-                      className={`btn ${tsVerified ? "btn--subtle" : "btn--ghost"}`}
-                      onClick={verifyTs}
-                      disabled={!tailscaleAuthKey.trim() || tsVerifying}
-                    >
-                      {tsVerified ? (
-                        <Icon name="check" size={14} />
-                      ) : null}
-                      {tsVerified ? "Valid" : tsVerifying ? "Verifying…" : "Verify"}
-                    </button>
-                  </div>
+                <Field label="Tailscale auth key">
+                  <input
+                    className="input"
+                    type="password"
+                    placeholder="tskey-auth-…"
+                    value={tailscaleAuthKey}
+                    onChange={(e) => setTailscaleAuthKey(e.target.value)}
+                  />
+                  <Callout kind="warn" icon="alert" title="Key is not verified">
+                    If this key is invalid or expired, provisioning will fail. You&rsquo;ll need
+                    to delete the assistant and create a new one with a valid key.
+                  </Callout>
                 </Field>
               )}
 

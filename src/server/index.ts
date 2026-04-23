@@ -13,7 +13,6 @@ import { adminRoute } from "./routes/admin";
 import { organizationsRoute } from "./routes/organizations";
 import { plansRoute } from "./routes/plans";
 import { creditsRoute } from "./routes/credits";
-import { tailscaleRoute } from "./routes/tailscale";
 
 const app = new Hono().basePath("/api");
 
@@ -56,7 +55,6 @@ app.use("/channels/*", clerkAuth());
 app.use("/billing/*", clerkAuth());
 app.use("/orgs/*", clerkAuth());
 app.use("/credits/*", clerkAuth());
-app.use("/tailscale/*", clerkAuth());
 
 // Plans — Clerk auth required (plans are global, any authenticated user can read)
 app.use("/plans/*", clerkAuth());
@@ -72,8 +70,7 @@ const appWithRoutes = app
   .route("/admin", adminRoute)
   .route("/orgs", organizationsRoute)
   .route("/plans", plansRoute)
-  .route("/credits", creditsRoute)
-  .route("/tailscale", tailscaleRoute);
+  .route("/credits", creditsRoute);
 
 export type AppType = typeof appWithRoutes;
 export default appWithRoutes;
