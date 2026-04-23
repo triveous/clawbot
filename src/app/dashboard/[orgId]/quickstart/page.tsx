@@ -1,6 +1,7 @@
 "use client";
 
 import { use } from "react";
+import Image from "next/image";
 import Link from "next/link";
 import { Icon } from "@/components/dashboard";
 
@@ -41,11 +42,20 @@ export default function QuickstartPage({
   return (
     <div className="mx-auto my-10 max-w-[760px]">
       <div className="mb-9 text-center">
-        <div className="mx-auto mb-5 grid size-14 place-items-center rounded-[14px] bg-primary text-white">
-          <Icon name="bot" size={28} />
+        <div className="mx-auto mb-5 grid size-14 place-items-center rounded-[14px] bg-primary">
+          <Image
+            src="/brand/logo-mark.svg"
+            alt="Clawbot"
+            width={34}
+            height={34}
+            priority
+          />
         </div>
         <h1 className="mb-2 font-[var(--font-instrument-serif)] text-[40px] font-normal leading-[1.1] tracking-[-0.02em]">
-          Welcome to <span className="text-primary">Clawbot</span>
+          Welcome to{" "}
+          <span className="font-[var(--font-instrument-serif)] text-primary">
+            Clawbot
+          </span>
         </h1>
         <p className="mx-auto max-w-[520px] text-[15px] leading-[1.55] text-muted-foreground">
           Three steps. Five minutes. Then your agent is live on its own hardened VPS — no
