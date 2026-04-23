@@ -66,16 +66,20 @@ export function UserChip({
   const displayName = name ?? email ?? "You";
   const initialsText = initials(name, email);
 
-  const avatarNode = user.imageUrl ? (
-    // eslint-disable-next-line @next/next/no-img-element
-    <img
-      src={user.imageUrl}
-      alt=""
-      className="userchip__avatar object-cover"
-    />
-  ) : (
-    <div className="userchip__avatar">{initialsText}</div>
-  );
+  // Clerk always returns an imageUrl (falls back to a stock avatar when none
+  // uploaded) — only render the <img> when the user has actually uploaded
+  // something. Otherwise we show the design's gradient-with-initials tile.
+  const avatarNode =
+    user.hasImage && user.imageUrl ? (
+      // eslint-disable-next-line @next/next/no-img-element
+      <img
+        src={user.imageUrl}
+        alt=""
+        className="userchip__avatar object-cover"
+      />
+    ) : (
+      <div className="userchip__avatar">{initialsText}</div>
+    );
 
   return (
     <div

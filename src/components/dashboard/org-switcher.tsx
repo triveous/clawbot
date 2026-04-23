@@ -27,9 +27,24 @@ function initial(org: { name: string; slug?: string | null } | null) {
   return src[0]?.toUpperCase() ?? "?";
 }
 
-function Avatar({ org, size = 22 }: { org: { id: string; name: string; slug?: string | null; imageUrl?: string }; size?: number }) {
-  if (org.imageUrl) {
-     
+function Avatar({
+  org,
+  size = 22,
+}: {
+  org: {
+    id: string;
+    name: string;
+    slug?: string | null;
+    imageUrl?: string;
+    hasImage?: boolean;
+  };
+  size?: number;
+}) {
+  // Clerk's Organization.imageUrl is *always* populated — it falls back to a
+  // Clerk-hosted default avatar when no logo has been uploaded. We only want
+  // to render the <img> when the org actually has a custom logo (hasImage);
+  // otherwise we keep the design's gradient-with-initial tile.
+  if (org.hasImage && org.imageUrl) {
     return (
       <img
         src={org.imageUrl}
@@ -127,7 +142,14 @@ export function OrgSwitcher({
       aria-expanded={open}
     >
       {current ? (
-        <Avatar org={{ id: current.id, name: current.name, imageUrl: current.imageUrl }} />
+        <Avatar
+          org={{
+            id: current.id,
+            name: current.name,
+            imageUrl: current.imageUrl,
+            hasImage: current.hasImage,
+          }}
+        />
       ) : (
         <div className="orgmenu__avatar" />
       )}
@@ -183,7 +205,15 @@ export function OrgSwitcher({
                     else void switchTo(o.id);
                   }}
                 >
-                  <Avatar org={{ id: o.id, name: o.name, slug: o.slug, imageUrl: o.imageUrl }} />
+                  <Avatar
+                    org={{
+                      id: o.id,
+                      name: o.name,
+                      slug: o.slug,
+                      imageUrl: o.imageUrl,
+                      hasImage: o.hasImage,
+                    }}
+                  />
                   <div style={{ flex: 1, minWidth: 0 }}>
                     <div style={{ fontSize: 13, fontWeight: 500 }}>{o.name}</div>
                     {o.slug ? (
