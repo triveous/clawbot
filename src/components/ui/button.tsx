@@ -1,7 +1,9 @@
+import * as React from "react"
 import { Button as ButtonPrimitive } from "@base-ui/react/button"
 import { cva, type VariantProps } from "class-variance-authority"
 
 import { cn } from "@/lib/utils"
+import { Spinner } from "@/components/ui/spinner"
 
 const buttonVariants = cva(
   "group/button inline-flex shrink-0 items-center justify-center rounded-lg border border-transparent bg-clip-padding text-sm font-medium whitespace-nowrap transition-all outline-none select-none focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50 active:not-aria-[haspopup]:translate-y-px disabled:pointer-events-none disabled:opacity-50 aria-invalid:border-destructive aria-invalid:ring-3 aria-invalid:ring-destructive/20 dark:aria-invalid:border-destructive/50 dark:aria-invalid:ring-destructive/40 [&_svg]:pointer-events-none [&_svg]:shrink-0 [&_svg:not([class*='size-'])]:size-4",
@@ -40,19 +42,71 @@ const buttonVariants = cva(
   }
 )
 
+type ButtonProps = ButtonPrimitive.Props &
+  VariantProps<typeof buttonVariants> & {
+    loading?: boolean
+  }
+
+function isLikelyIcon(node: React.ReactNode): boolean {
+  if (!React.isValidElement(node)) return false
+  const type = node.type as unknown
+  if (type === "svg") return true
+  if (typeof type === "function" || typeof type === "object") {
+    const t = type as { displayName?: string; name?: string; render?: unknown }
+    const name = t?.displayName || t?.name || ""
+    if (/Icon$|^Lucide|^Svg/i.test(name)) return true
+    // lucide-react icons are forwardRef components; inspect render name too
+    const render = (t as { render?: { displayName?: string; name?: string } })
+      ?.render
+    if (render && (render.displayName || render.name)) {
+      const rn = render.displayName || render.name || ""
+      if (/Icon$|^Lucide|^Svg/i.test(rn)) return true
+    }
+  }
+  return false
+}
+
 function Button({
   className,
   variant = "default",
   size = "default",
+  loading = false,
+  disabled,
+  children,
   ...props
-}: ButtonPrimitive.Props & VariantProps<typeof buttonVariants>) {
+}: ButtonProps) {
+  const spinnerSize = size === "xs" || size === "icon-xs" ? "xs" : "sm"
+
+  let rendered: React.ReactNode = children
+  if (loading) {
+    let swapped = false
+    const mapped = React.Children.map(children, (child) => {
+      if (!swapped && isLikelyIcon(child)) {
+        swapped = true
+        return <Spinner size={spinnerSize} />
+      }
+      return child
+    })
+    rendered = swapped ? mapped : (
+      <>
+        <Spinner size={spinnerSize} />
+        {children}
+      </>
+    )
+  }
+
   return (
     <ButtonPrimitive
       data-slot="button"
+      aria-busy={loading || undefined}
+      disabled={disabled || loading}
       className={cn(buttonVariants({ variant, size, className }))}
       {...props}
-    />
+    >
+      {rendered}
+    </ButtonPrimitive>
   )
 }
 
 export { Button, buttonVariants }
+export type { ButtonProps }

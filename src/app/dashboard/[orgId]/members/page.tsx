@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useState } from "react";
+import { toast } from "sonner";
 import {
   listMembers,
   listInvitations,
@@ -24,6 +25,9 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
+import { Spinner } from "@/components/ui/spinner";
+import { SkeletonRow } from "@/components/ui/skeleton";
+import { useAsyncAction } from "@/hooks/use-async-action";
 import { formatDate } from "@/lib/dashboard/format";
 
 type Member = {
@@ -62,78 +66,92 @@ function avatarInitials(name: string | null, identifier: string) {
 export default function MembersPage() {
   const [members, setMembers] = useState<Member[]>([]);
   const [invitations, setInvitations] = useState<Invitation[]>([]);
-  const [loading, setLoading] = useState(true);
+  const [firstLoad, setFirstLoad] = useState(true);
   const [forbidden, setForbidden] = useState(false);
 
   const [email, setEmail] = useState("");
   const [role, setRole] = useState("org:member");
-  const [inviting, setInviting] = useState(false);
   const [inviteError, setInviteError] = useState("");
-  const [inviteSuccess, setInviteSuccess] = useState("");
-  const [actionError, setActionError] = useState("");
 
-  const load = useCallback(async () => {
+  const fetchAll = useCallback(async () => {
     try {
       const [m, inv] = await Promise.all([listMembers(), listInvitations()]);
       setMembers(m);
       setInvitations(inv);
     } catch (e) {
-      if (String(e).includes("Forbidden")) setForbidden(true);
-    } finally {
-      setLoading(false);
+      if (String(e).includes("Forbidden")) {
+        setForbidden(true);
+        return;
+      }
+      throw e;
     }
   }, []);
 
+  const load = useAsyncAction(fetchAll, {
+    successToast: false,
+    errorToast: "Could not load members",
+  });
+
   useEffect(() => {
-    void load();
-  }, [load]);
+    void load.run().finally(() => setFirstLoad(false));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
-  async function invite() {
-    if (!email.trim()) return;
-    setInviting(true);
-    setInviteError("");
-    setInviteSuccess("");
-    try {
-      await inviteMember(email.trim(), role);
-      setInviteSuccess(`Invitation sent to ${email.trim()}`);
+  const invite = useAsyncAction(
+    async () => {
+      const target = email.trim();
+      if (!target) return "";
+      await inviteMember(target, role);
       setEmail("");
-      await load();
-    } catch (e) {
-      setInviteError(String(e).replace("Error: ", ""));
-    } finally {
-      setInviting(false);
-    }
-  }
+      setInviteError("");
+      await fetchAll();
+      return target;
+    },
+    {
+      successToast: (target) =>
+        target ? `Invitation sent to ${target as string}` : "",
+      errorToast: false,
+    },
+  );
 
-  async function revoke(invitationId: string) {
-    setActionError("");
-    try {
+  const revoke = useAsyncAction(
+    async (invitationId: string) => {
       await revokeInvitation(invitationId);
-      await load();
-    } catch (e) {
-      setActionError(String(e).replace("Error: ", ""));
-    }
-  }
+      await fetchAll();
+    },
+    {
+      successToast: "Invitation revoked",
+      errorToast: "Could not revoke — try again",
+    },
+  );
 
-  async function remove(memberUserId: string) {
-    setActionError("");
-    try {
-      await removeMember(memberUserId);
-      await load();
-    } catch (e) {
-      setActionError(String(e).replace("Error: ", ""));
-    }
-  }
+  const remove = useAsyncAction(
+    async (userId: string) => {
+      await removeMember(userId);
+      await fetchAll();
+    },
+    {
+      successToast: "Member removed",
+      errorToast: "Could not remove — try again",
+    },
+  );
 
   async function changeRole(memberUserId: string, newRole: string) {
-    setActionError("");
+    // Optimistic update — apply locally, revert on failure.
+    const prev = members;
+    setMembers((ms) =>
+      ms.map((m) => (m.userId === memberUserId ? { ...m, role: newRole } : m)),
+    );
     try {
       await updateMemberRole(memberUserId, newRole);
-      await load();
+      toast.success("Role updated");
     } catch (e) {
-      setActionError(String(e).replace("Error: ", ""));
+      setMembers(prev);
+      toast.error(String(e).replace("Error: ", "") || "Could not update role");
     }
   }
+
+  const [pendingRowId, setPendingRowId] = useState<string | null>(null);
 
   if (forbidden) {
     return (
@@ -174,14 +192,6 @@ export default function MembersPage() {
         </div>
       </div>
 
-      {actionError ? (
-        <div className="mb-4">
-          <Callout kind="danger" icon="alert">
-            {actionError}
-          </Callout>
-        </div>
-      ) : null}
-
       <SectionCard title="Invite a teammate" sub="They'll get an email with a join link">
         <div className="flex gap-2.5 items-end flex-wrap">
           <div className="flex-[1_1_280px] min-w-[220px]">
@@ -194,10 +204,14 @@ export default function MembersPage() {
                 onChange={(e) => {
                   setEmail(e.target.value);
                   setInviteError("");
-                  setInviteSuccess("");
                 }}
                 onKeyDown={(e) => {
-                  if (e.key === "Enter") void invite();
+                  if (e.key === "Enter" && email.trim())
+                    void invite
+                      .run()
+                      .catch((err) =>
+                        setInviteError(String(err).replace("Error: ", "")),
+                      );
                 }}
               />
             </Field>
@@ -221,30 +235,28 @@ export default function MembersPage() {
           <button
             type="button"
             className="btn btn--primary"
-            onClick={() => void invite()}
-            disabled={inviting || !email.trim()}
+            onClick={() =>
+              void invite
+                .run()
+                .catch((err) => setInviteError(String(err).replace("Error: ", "")))
+            }
+            disabled={invite.loading || !email.trim()}
+            aria-busy={invite.loading || undefined}
           >
-            <Icon name="send" size={14} />
-            {inviting ? "Sending…" : "Send invite"}
+            {invite.loading ? <Spinner size="xs" /> : <Icon name="send" size={14} />}
+            Send invite
           </button>
         </div>
-        {inviteSuccess ? (
-          <div className="faint text-[var(--success)] text-xs mt-2.5">
-            {inviteSuccess}
-          </div>
-        ) : null}
         {inviteError ? (
-          <div className="field__err mt-2.5">
-            {inviteError}
-          </div>
+          <div className="field__err mt-2.5">{inviteError}</div>
         ) : null}
       </SectionCard>
 
       <div className="mt-5">
         <SectionCard title="Members" sub={`${members.length} total`} pad={false}>
-          {loading ? (
-            <div className="p-6 text-muted-foreground text-[13px]">
-              Loading…
+          {firstLoad ? (
+            <div className="p-4">
+              <SkeletonRow rows={4} avatar />
             </div>
           ) : members.length === 0 ? (
             <div className="p-6 text-muted-foreground text-[13px]">
@@ -261,6 +273,7 @@ export default function MembersPage() {
               </thead>
               <tbody>
                 {members.map((m) => {
+                  const rowBusy = pendingRowId === m.userId && remove.loading;
                   const menu: RowMenuItem[] = [
                     {
                       label: m.role === "org:admin" ? "Demote to member" : "Promote to admin",
@@ -276,7 +289,22 @@ export default function MembersPage() {
                       label: "Remove from org",
                       icon: "trash",
                       destructive: true,
-                      onClick: () => void remove(m.userId),
+                      onClick: async () => {
+                        if (
+                          !confirm(
+                            `Remove ${m.name ?? m.identifier} from the org?`,
+                          )
+                        )
+                          return;
+                        setPendingRowId(m.userId);
+                        try {
+                          await remove.run(m.userId);
+                        } catch {
+                          /* toast handled */
+                        } finally {
+                          setPendingRowId(null);
+                        }
+                      },
                     },
                   ];
                   return (
@@ -326,7 +354,17 @@ export default function MembersPage() {
                         </Select>
                       </td>
                       <td className="text-right">
-                        <RowMenu items={menu} />
+                        {rowBusy ? (
+                          <span
+                            className="inline-flex items-center gap-2 text-muted-foreground text-xs"
+                            aria-busy="true"
+                          >
+                            <Spinner size="xs" />
+                            Removing
+                          </span>
+                        ) : (
+                          <RowMenu items={menu} />
+                        )}
                       </td>
                     </tr>
                   );
@@ -367,9 +405,28 @@ export default function MembersPage() {
                       <button
                         type="button"
                         className="btn btn--ghost btn--sm"
-                        onClick={() => void revoke(inv.id)}
+                        onClick={async () => {
+                          setPendingRowId(inv.id);
+                          try {
+                            await revoke.run(inv.id);
+                          } catch {
+                            /* toast handled */
+                          } finally {
+                            setPendingRowId(null);
+                          }
+                        }}
+                        disabled={pendingRowId === inv.id && revoke.loading}
+                        aria-busy={
+                          pendingRowId === inv.id && revoke.loading
+                            ? true
+                            : undefined
+                        }
                       >
-                        <Icon name="x" size={12} />
+                        {pendingRowId === inv.id && revoke.loading ? (
+                          <Spinner size="xs" />
+                        ) : (
+                          <Icon name="x" size={12} />
+                        )}
                         Revoke
                       </button>
                     </td>

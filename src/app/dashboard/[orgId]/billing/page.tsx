@@ -12,6 +12,14 @@ import {
   RowMenu,
   type RowMenuItem,
 } from "@/components/dashboard";
+import { Spinner } from "@/components/ui/spinner";
+import {
+  SkeletonKPI,
+  SkeletonTable,
+  SkeletonText,
+} from "@/components/ui/skeleton";
+import { ProgressBar } from "@/components/ui/progress-bar";
+import { useAsyncAction } from "@/hooks/use-async-action";
 import { formatDate, formatPrice } from "@/lib/dashboard/format";
 
 type PaymentMethod = {
@@ -147,48 +155,38 @@ export default function BillingPage({
   const [paymentMethods, setPaymentMethods] = useState<PaymentMethod[]>([]);
   const [paymentMethodsLoaded, setPaymentMethodsLoaded] = useState(false);
   const [customer, setCustomer] = useState<StripeCustomer | null>(null);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState("");
-  const [busy, setBusy] = useState<string | null>(null);
+  const [firstLoad, setFirstLoad] = useState(true);
   const [changingPlanFor, setChangingPlanFor] = useState<string | null>(null);
   const [confirmCancel, setConfirmCancel] = useState<string | null>(null);
+  const [pendingSubId, setPendingSubId] = useState<string | null>(null);
 
-  const load = useCallback(async () => {
-    setError("");
-    try {
-      const [subRes, invRes, planRes, creditRes, asstRes] = await Promise.all([
-        rpc.api.billing.subscriptions.$get(),
-        rpc.api.billing.invoices.$get(),
-        rpc.api.plans.$get(),
-        rpc.api.credits.$get(),
-        rpc.api.assistants.$get(),
-      ]);
-      if (subRes.ok) {
-        const data = (await subRes.json()) as { subscriptions: Subscription[] };
-        setSubs(data.subscriptions);
-      }
-      if (invRes.ok) {
-        const data = (await invRes.json()) as { invoices: Invoice[] };
-        setInvoices(data.invoices);
-      }
-      if (planRes.ok) {
-        const data = (await planRes.json()) as { plans: Plan[] };
-        setPlans(data.plans);
-      }
-      if (creditRes.ok) {
-        const data = (await creditRes.json()) as { credits: Credit[] };
-        setCredits(data.credits);
-      }
-      if (asstRes.ok) {
-        const data = (await asstRes.json()) as { assistants: Assistant[] };
-        setAssistants(data.assistants);
-      }
-    } catch {
-      setError("Failed to load billing data");
-    } finally {
-      setLoading(false);
+  const fetchAll = useCallback(async () => {
+    const [subRes, invRes, planRes, creditRes, asstRes] = await Promise.all([
+      rpc.api.billing.subscriptions.$get(),
+      rpc.api.billing.invoices.$get(),
+      rpc.api.plans.$get(),
+      rpc.api.credits.$get(),
+      rpc.api.assistants.$get(),
+    ]);
+    if (!subRes.ok || !invRes.ok || !planRes.ok || !creditRes.ok || !asstRes.ok) {
+      throw new Error("Failed to load billing data");
     }
+    const subData = (await subRes.json()) as { subscriptions: Subscription[] };
+    const invData = (await invRes.json()) as { invoices: Invoice[] };
+    const planData = (await planRes.json()) as { plans: Plan[] };
+    const creditData = (await creditRes.json()) as { credits: Credit[] };
+    const asstData = (await asstRes.json()) as { assistants: Assistant[] };
+    setSubs(subData.subscriptions);
+    setInvoices(invData.invoices);
+    setPlans(planData.plans);
+    setCredits(creditData.credits);
+    setAssistants(asstData.assistants);
   }, [rpc]);
+
+  const load = useAsyncAction(fetchAll, {
+    successToast: false,
+    errorToast: false,
+  });
 
   const loadPaymentMethods = useCallback(async () => {
     setPaymentMethodsLoaded(false);
@@ -212,8 +210,9 @@ export default function BillingPage({
   }, [rpc]);
 
   useEffect(() => {
-    void load();
-  }, [load]);
+    void load.run().finally(() => setFirstLoad(false));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   useEffect(() => {
     if (!isAdmin) return;
@@ -266,72 +265,106 @@ export default function BillingPage({
     .reduce((sum, i) => sum + i.amountPaid, 0);
   const defaultCurrency = activeSubs[0]?.currency ?? invoices[0]?.currency ?? "USD";
 
-  async function openPortal() {
-    setBusy("portal");
-    try {
+  const openPortal = useAsyncAction(
+    async () => {
       const res = await rpc.api.billing.portal.$post();
-      if (res.ok) {
-        const data = (await res.json()) as { url: string };
-        window.location.href = data.url;
-      } else {
-        setError("Could not open Stripe portal");
-      }
-    } finally {
-      setBusy(null);
-    }
-  }
+      if (!res.ok) throw new Error("Could not open Stripe portal");
+      const data = (await res.json()) as { url: string };
+      window.location.href = data.url;
+    },
+    { errorToast: "Could not open Stripe portal" },
+  );
 
-  async function cancelSub(subId: string) {
-    setBusy(subId);
-    try {
+  const cancelSub = useAsyncAction(
+    async (subId: string) => {
       const res = await rpc.api.billing.subscriptions[":id"].cancel.$post({
         param: { id: subId },
       });
-      if (res.ok) {
-        setConfirmCancel(null);
-        await load();
-      } else {
-        setError("Cancel failed");
-      }
-    } finally {
-      setBusy(null);
-    }
-  }
+      if (!res.ok) throw new Error("Cancel failed");
+      setConfirmCancel(null);
+      await fetchAll();
+    },
+    {
+      successToast: "Subscription cancellation scheduled",
+      errorToast: "Could not cancel — try again",
+    },
+  );
 
-  async function changePlan(
-    subId: string,
-    newPlanId: string,
-    mode: "upgrade" | "downgrade",
-  ) {
-    setBusy(subId);
-    try {
+  const changePlan = useAsyncAction(
+    async (subId: string, newPlanId: string, mode: "upgrade" | "downgrade") => {
       const res = await fetch(`/api/billing/subscriptions/${subId}/change-plan`, {
         method: "POST",
         headers: { "content-type": "application/json" },
         body: JSON.stringify({ newPlanId, mode }),
       });
-      if (res.ok) {
-        setChangingPlanFor(null);
-        await load();
-      } else {
-        setError("Plan change failed");
-      }
-    } finally {
-      setBusy(null);
-    }
+      if (!res.ok) throw new Error("Plan change failed");
+      setChangingPlanFor(null);
+      await fetchAll();
+    },
+    {
+      successToast: "Plan changed",
+      errorToast: "Could not change plan — try again",
+    },
+  );
+
+  if (firstLoad) {
+    return (
+      <div>
+        <div className="page__head">
+          <div>
+            <h1 className="page__title">
+              Billing{" "}
+              <span className="accent font-[var(--font-instrument-serif)]">
+                &amp; credits
+              </span>
+            </h1>
+            <div className="page__sub">
+              Credits are what you buy. One credit → one live assistant.
+            </div>
+          </div>
+        </div>
+        <SkeletonKPI count={4} className="mb-5" />
+        <SkeletonTable rows={4} cols={6} />
+        <div className="mt-5">
+          <SkeletonTable rows={3} cols={5} />
+        </div>
+      </div>
+    );
   }
 
-  if (loading) {
+  if (load.error && subs.length === 0 && invoices.length === 0) {
     return (
-      <div className="page__loading">
-        <Icon name="creditCard" size={20} />
-        Loading billing…
+      <div>
+        <div className="page__head">
+          <div>
+            <h1 className="page__title">Billing</h1>
+          </div>
+        </div>
+        <Callout kind="danger" icon="alert" title="Couldn't load billing data">
+          {load.error.message}
+          <div className="mt-2.5">
+            <button
+              type="button"
+              className="btn btn--ghost btn--sm"
+              onClick={() => void load.run()}
+              disabled={load.loading}
+            >
+              {load.loading ? (
+                <Spinner size="xs" />
+              ) : (
+                <Icon name="refresh" size={12} />
+              )}
+              Retry
+            </button>
+          </div>
+        </Callout>
       </div>
     );
   }
 
   return (
-    <div>
+    <div className="relative">
+      <ProgressBar active={!firstLoad && load.loading} />
       <div className="page__head">
         <div>
           <h1 className="page__title">
@@ -348,11 +381,12 @@ export default function BillingPage({
           <button
             type="button"
             className="btn btn--ghost"
-            onClick={openPortal}
-            disabled={busy === "portal"}
+            onClick={() => void openPortal.run()}
+            disabled={openPortal.loading}
+            aria-busy={openPortal.loading || undefined}
           >
-            <Icon name="creditCard" size={14} />
-            {busy === "portal" ? "Opening…" : "Manage payment"}
+            {openPortal.loading ? <Spinner size="xs" /> : <Icon name="creditCard" size={14} />}
+            Manage payment
           </button>
           <Link href={`/dashboard/${orgId}/pricing`} className="btn btn--primary">
             <Icon name="plus" size={14} />
@@ -360,14 +394,6 @@ export default function BillingPage({
           </Link>
         </div>
       </div>
-
-      {error ? (
-        <div className="mb-4">
-          <Callout kind="danger" icon="alert" title="Something went wrong">
-            {error}
-          </Callout>
-        </div>
-      ) : null}
 
       {pastDue.length > 0 ? (
         <div className="mb-4">
@@ -382,10 +408,11 @@ export default function BillingPage({
               <button
                 type="button"
                 className="btn btn--danger btn--sm"
-                onClick={openPortal}
-                disabled={busy === "portal"}
+                onClick={() => void openPortal.run()}
+                disabled={openPortal.loading}
+                aria-busy={openPortal.loading || undefined}
               >
-                <Icon name="creditCard" size={12} />
+                {openPortal.loading ? <Spinner size="xs" /> : <Icon name="creditCard" size={12} />}
                 Update payment method
               </button>
             </div>
@@ -488,10 +515,15 @@ export default function BillingPage({
                       <button
                         type="button"
                         className="btn btn--primary btn--sm"
-                        onClick={openPortal}
-                        disabled={busy === "portal"}
+                        onClick={() => void openPortal.run()}
+                        disabled={openPortal.loading}
+                        aria-busy={openPortal.loading || undefined}
                       >
-                        <Icon name="creditCard" size={12} />
+                        {openPortal.loading ? (
+                          <Spinner size="xs" />
+                        ) : (
+                          <Icon name="creditCard" size={12} />
+                        )}
                         Pay now
                       </button>
                     );
@@ -538,7 +570,7 @@ export default function BillingPage({
                   menuItems.push({
                     label: "Manage in Stripe",
                     icon: "link",
-                    onClick: openPortal,
+                    onClick: () => void openPortal.run(),
                   });
                   if (!sub.cancelAtPeriodEnd && sub.status !== "canceled") {
                     menuItems.push({ divider: true });
@@ -654,15 +686,30 @@ export default function BillingPage({
                       <button
                         type="button"
                         className="btn btn--ghost btn--sm"
-                        onClick={() =>
-                          changePlan(
-                            sub.id,
-                            p.id,
-                            isUpgrade ? "upgrade" : "downgrade",
-                          )
+                        onClick={async () => {
+                          setPendingSubId(sub.id);
+                          try {
+                            await changePlan.run(
+                              sub.id,
+                              p.id,
+                              isUpgrade ? "upgrade" : "downgrade",
+                            );
+                          } finally {
+                            setPendingSubId(null);
+                          }
+                        }}
+                        disabled={pendingSubId === sub.id && changePlan.loading}
+                        aria-busy={
+                          pendingSubId === sub.id && changePlan.loading
+                            ? true
+                            : undefined
                         }
-                        disabled={busy === sub.id}
                       >
+                        {pendingSubId === sub.id && changePlan.loading ? (
+                          <Spinner size="xs" />
+                        ) : (
+                          <Icon name="chevRight" size={12} />
+                        )}
                         Switch
                       </button>
                     </div>
@@ -756,11 +803,12 @@ export default function BillingPage({
               <button
                 type="button"
                 className="btn btn--ghost btn--sm"
-                onClick={openPortal}
-                disabled={busy === "portal"}
+                onClick={() => void openPortal.run()}
+                disabled={openPortal.loading}
+                aria-busy={openPortal.loading || undefined}
               >
-                <Icon name="plus" size={12} />
-                {busy === "portal" ? "Opening…" : "Add card"}
+                {openPortal.loading ? <Spinner size="xs" /> : <Icon name="plus" size={12} />}
+                Add card
               </button>
             ) : null
           }
@@ -771,9 +819,7 @@ export default function BillingPage({
               above — only the raw card list is restricted.
             </Callout>
           ) : !paymentMethodsLoaded ? (
-            <div className="faint text-[13px] py-2">
-              Loading cards…
-            </div>
+            <SkeletonTable rows={2} cols={2} />
           ) : paymentMethods.length === 0 ? (
             <div className="faint text-[13px] leading-[1.55]">
               No cards on file. Stripe asks for a card at checkout, so you&rsquo;ll get one
@@ -782,11 +828,12 @@ export default function BillingPage({
                 <button
                   type="button"
                   className="btn btn--ghost"
-                  onClick={openPortal}
-                  disabled={busy === "portal"}
+                  onClick={() => void openPortal.run()}
+                  disabled={openPortal.loading}
+                  aria-busy={openPortal.loading || undefined}
                 >
-                  <Icon name="link" size={14} />
-                  {busy === "portal" ? "Opening…" : "Open Stripe portal"}
+                  {openPortal.loading ? <Spinner size="xs" /> : <Icon name="link" size={14} />}
+                  Open Stripe portal
                 </button>
               </div>
             </div>
@@ -828,11 +875,12 @@ export default function BillingPage({
               <button
                 type="button"
                 className="btn btn--ghost btn--sm self-start mt-1"
-                onClick={openPortal}
-                disabled={busy === "portal"}
+                onClick={() => void openPortal.run()}
+                disabled={openPortal.loading}
+                aria-busy={openPortal.loading || undefined}
               >
-                <Icon name="link" size={12} />
-                {busy === "portal" ? "Opening…" : "Manage in Stripe"}
+                {openPortal.loading ? <Spinner size="xs" /> : <Icon name="link" size={12} />}
+                Manage in Stripe
               </button>
             </div>
           )}
@@ -842,8 +890,8 @@ export default function BillingPage({
           isAdmin={isAdmin}
           customer={customer}
           defaultCurrency={defaultCurrency}
-          onOpenPortal={openPortal}
-          openingPortal={busy === "portal"}
+          onOpenPortal={() => void openPortal.run()}
+          openingPortal={openPortal.loading}
         />
       </div>
 
@@ -874,11 +922,29 @@ export default function BillingPage({
               <button
                 type="button"
                 className="btn btn--danger"
-                onClick={() => cancelSub(confirmCancel)}
-                disabled={busy === confirmCancel}
+                onClick={async () => {
+                  const id = confirmCancel;
+                  if (!id) return;
+                  setPendingSubId(id);
+                  try {
+                    await cancelSub.run(id);
+                  } finally {
+                    setPendingSubId(null);
+                  }
+                }}
+                disabled={pendingSubId === confirmCancel && cancelSub.loading}
+                aria-busy={
+                  pendingSubId === confirmCancel && cancelSub.loading
+                    ? true
+                    : undefined
+                }
               >
-                <Icon name="trash" size={14} />
-                {busy === confirmCancel ? "Cancelling…" : "Cancel at period end"}
+                {pendingSubId === confirmCancel && cancelSub.loading ? (
+                  <Spinner size="xs" />
+                ) : (
+                  <Icon name="trash" size={14} />
+                )}
+                Cancel at period end
               </button>
             </div>
           </div>
@@ -923,9 +989,7 @@ function BillingDetailsCard({
   if (customer === null) {
     return (
       <SectionCard title="Billing details" sub="Shown on Stripe invoices">
-        <div className="faint text-[13px] py-2">
-          Loading…
-        </div>
+        <SkeletonText lines={4} />
       </SectionCard>
     );
   }
@@ -941,9 +1005,10 @@ function BillingDetailsCard({
             className="btn btn--ghost btn--sm"
             onClick={onOpenPortal}
             disabled={openingPortal}
+            aria-busy={openingPortal || undefined}
           >
-            <Icon name="link" size={12} />
-            {openingPortal ? "Opening…" : "Configure"}
+            {openingPortal ? <Spinner size="xs" /> : <Icon name="link" size={12} />}
+            Configure
           </button>
         }
       >
@@ -1025,9 +1090,10 @@ function BillingDetailsCard({
           className="btn btn--ghost btn--sm"
           onClick={onOpenPortal}
           disabled={openingPortal}
+          aria-busy={openingPortal || undefined}
         >
-          <Icon name="edit" size={12} />
-          {openingPortal ? "Opening…" : "Edit in Stripe"}
+          {openingPortal ? <Spinner size="xs" /> : <Icon name="edit" size={12} />}
+          Edit in Stripe
         </button>
       }
     >

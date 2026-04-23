@@ -23,6 +23,8 @@ import {
   type RowMenuItem,
   type IconName,
 } from "@/components/dashboard";
+import { Spinner } from "@/components/ui/spinner";
+import { SkeletonTable } from "@/components/ui/skeleton";
 import {
   Select,
   SelectContent,
@@ -183,9 +185,10 @@ function SnapshotsPanel() {
             className="btn btn--primary"
             onClick={() => void build()}
             disabled={building || !version.trim() || !openclawVersion.trim()}
+            aria-busy={building || undefined}
           >
-            <Icon name="zap" size={14} />
-            {building ? "Starting…" : "Build snapshot"}
+            {building ? <Spinner size="xs" /> : <Icon name="zap" size={14} />}
+            Build snapshot
           </button>
         </div>
         {runId ? (
@@ -200,7 +203,9 @@ function SnapshotsPanel() {
 
       <SectionCard title="Snapshots" sub={`${snaps.length} total`} pad={false}>
         {loading ? (
-          <div className="p-6 text-[13px] text-muted-foreground">Loading…</div>
+          <div className="p-4">
+            <SkeletonTable rows={3} cols={6} />
+          </div>
         ) : snaps.length === 0 ? (
           <div className="p-6 text-[13px] text-muted-foreground">No snapshots yet.</div>
         ) : (
@@ -235,9 +240,14 @@ function SnapshotsPanel() {
                       className="btn btn--danger btn--sm"
                       onClick={() => void del(snap.id)}
                       disabled={deleting === snap.id}
+                      aria-busy={deleting === snap.id || undefined}
                     >
-                      <Icon name="trash" size={12} />
-                      {deleting === snap.id ? "Deleting…" : "Delete"}
+                      {deleting === snap.id ? (
+                        <Spinner size="xs" />
+                      ) : (
+                        <Icon name="trash" size={12} />
+                      )}
+                      Delete
                     </button>
                   </td>
                 </tr>
@@ -439,9 +449,10 @@ function PlansPanel() {
               className="btn btn--primary"
               onClick={() => void save()}
               disabled={saving || !slug.trim() || !displayName.trim() || !priceCents}
+              aria-busy={saving || undefined}
             >
-              <Icon name="check" size={14} />
-              {saving ? "Creating…" : "Create plan"}
+              {saving ? <Spinner size="xs" /> : <Icon name="check" size={14} />}
+              Create plan
             </button>
           </DialogFooter>
         </DialogContent>
@@ -463,7 +474,9 @@ function PlansPanel() {
         }
       >
         {loading ? (
-          <div className="p-6 text-[13px] text-muted-foreground">Loading…</div>
+          <div className="p-4">
+            <SkeletonTable rows={3} cols={5} />
+          </div>
         ) : plans.length === 0 ? (
           <div className="p-6 text-[13px] text-muted-foreground">No plans yet.</div>
         ) : (
@@ -571,9 +584,10 @@ function PlansPanel() {
                                 className="btn btn--primary btn--sm"
                                 onClick={() => void saveEdit()}
                                 disabled={saving}
+                                aria-busy={saving || undefined}
                               >
-                                <Icon name="check" size={12} />
-                                {saving ? "Saving…" : "Save changes"}
+                                {saving ? <Spinner size="xs" /> : <Icon name="check" size={12} />}
+                                Save changes
                               </button>
                               <button
                                 type="button"
@@ -837,18 +851,20 @@ function CreditsPanel() {
             className="btn btn--primary"
             onClick={() => void mint()}
             disabled={minting || !orgId.trim() || !mintPlanId}
+            aria-busy={minting || undefined}
           >
-            <Icon name="plus" size={14} />
-            {minting ? "Minting…" : "Mint credit"}
+            {minting ? <Spinner size="xs" /> : <Icon name="plus" size={14} />}
+            Mint credit
           </button>
           <button
             type="button"
             className="btn btn--ghost"
             onClick={() => void loadCredits()}
             disabled={loadingCredits || !orgId.trim()}
+            aria-busy={loadingCredits || undefined}
           >
-            <Icon name="refresh" size={14} />
-            {loadingCredits ? "Loading…" : "Load org credits"}
+            {loadingCredits ? <Spinner size="xs" /> : <Icon name="refresh" size={14} />}
+            Load org credits
           </button>
         </div>
         {error ? <div className="field__err mt-3">{error}</div> : null}

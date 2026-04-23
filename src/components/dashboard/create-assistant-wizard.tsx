@@ -12,6 +12,7 @@ import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { useRpc } from "@/hooks/use-rpc";
 import { Icon } from "./icon";
+import { Skeleton, SkeletonText } from "@/components/ui/skeleton";
 import { formatPrice } from "@/lib/dashboard/format";
 import type { AccessMode } from "@/types/assistant";
 
@@ -290,8 +291,15 @@ export function CreateAssistantWizard({
       <div className="faw__content">
         <div className="faw__form">
           {loadingMeta ? (
-            <div className="faint p-10 text-[13px]">
-              Loading plans…
+            <div className="p-10 space-y-4" role="status" aria-busy="true">
+              <Skeleton className="h-6 w-40" />
+              <SkeletonText lines={3} />
+              <div className="grid gap-2 sm:grid-cols-3">
+                <Skeleton className="h-20" />
+                <Skeleton className="h-20" />
+                <Skeleton className="h-20" />
+              </div>
+              <span className="sr-only">Loading plans</span>
             </div>
           ) : plans.length === 0 ? (
             <div className="faw__step">

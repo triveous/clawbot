@@ -3,6 +3,7 @@
 import { use, useState } from "react";
 import Link from "next/link";
 import { Icon, StatusPill, type IconName } from "@/components/dashboard";
+import { SkeletonKPI, SkeletonRow } from "@/components/ui/skeleton";
 import { useAssistant } from "./use-assistant";
 import { OverviewTab } from "./tabs/overview-tab";
 import { AccessTab } from "./tabs/access-tab";
@@ -50,9 +51,14 @@ export default function AssistantDetailPage({
 
   if (state === "loading") {
     return (
-      <div className="page__loading">
-        <Icon name="bot" size={20} />
-        Loading assistant…
+      <div>
+        <div className="page__head">
+          <div>
+            <h1 className="page__title">Assistant</h1>
+          </div>
+        </div>
+        <SkeletonKPI count={4} className="mb-5" />
+        <SkeletonRow rows={4} icon />
       </div>
     );
   }

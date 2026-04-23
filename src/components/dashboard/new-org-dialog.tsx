@@ -12,6 +12,7 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import { Field, Icon } from "@/components/dashboard";
+import { Spinner } from "@/components/ui/spinner";
 
 function slugify(value: string) {
   return value
@@ -161,9 +162,10 @@ export function NewOrgDialog({
             className="btn btn--primary"
             onClick={() => void submit()}
             disabled={!name.trim() || creating}
+            aria-busy={creating || undefined}
           >
-            <Icon name="plus" size={14} />
-            {creating ? "Creating…" : "Create organization"}
+            {creating ? <Spinner size="xs" /> : <Icon name="plus" size={14} />}
+            Create organization
           </button>
         </DialogFooter>
       </DialogContent>

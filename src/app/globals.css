@@ -165,3 +165,28 @@
     @apply font-sans;
   }
 }
+
+/* Loading-state keyframes — used by Skeleton and ProgressBar primitives. */
+@keyframes skeleton-shimmer {
+  0% {
+    background-position: -200% 0;
+  }
+  100% {
+    background-position: 200% 0;
+  }
+}
+
+@keyframes progress-indeterminate {
+  0% {
+    left: -40%;
+    width: 40%;
+  }
+  60% {
+    left: 100%;
+    width: 40%;
+  }
+  100% {
+    left: 100%;
+    width: 40%;
+  }
+}

@@ -16,6 +16,7 @@ import {
   Callout,
   type IconName,
 } from "@/components/dashboard";
+import { Spinner } from "@/components/ui/spinner";
 
 type Tab = "account" | "organization" | "appearance" | "notifications";
 
@@ -194,9 +195,9 @@ function AccountTab() {
                 : "No photo uploaded — PNG or JPG (square) works best."}
             </div>
           </div>
-          <label className="btn btn--ghost btn--sm">
-            <Icon name="upload" size={12} />
-            {uploading ? "Uploading…" : user.hasImage ? "Change" : "Upload"}
+          <label className="btn btn--ghost btn--sm" aria-busy={uploading || undefined}>
+            {uploading ? <Spinner size="xs" /> : <Icon name="upload" size={12} />}
+            {user.hasImage ? "Change" : "Upload"}
             <input
               type="file"
               accept="image/png,image/jpeg"
@@ -244,9 +245,10 @@ function AccountTab() {
             className="btn btn--primary"
             onClick={() => void saveName()}
             disabled={!dirty || saving}
+            aria-busy={saving || undefined}
           >
-            <Icon name="check" size={14} />
-            {saving ? "Saving…" : "Save changes"}
+            {saving ? <Spinner size="xs" /> : <Icon name="check" size={14} />}
+            Save changes
           </button>
           {saved ? (
             <span className="faint text-xs text-[var(--success)]">
@@ -474,9 +476,9 @@ function OrganizationTab() {
                 : "No logo uploaded — we're showing an auto-generated tile. Upload a PNG or JPG (square) to replace it."}
             </div>
           </div>
-          <label className="btn btn--ghost btn--sm">
-            <Icon name="upload" size={12} />
-            {uploading ? "Uploading…" : organization.hasImage ? "Change" : "Upload"}
+          <label className="btn btn--ghost btn--sm" aria-busy={uploading || undefined}>
+            {uploading ? <Spinner size="xs" /> : <Icon name="upload" size={12} />}
+            {organization.hasImage ? "Change" : "Upload"}
             <input
               type="file"
               accept="image/png,image/jpeg"
@@ -544,9 +546,10 @@ function OrganizationTab() {
             className="btn btn--primary"
             onClick={() => void save()}
             disabled={!dirty || saving}
+            aria-busy={saving || undefined}
           >
-            <Icon name="check" size={14} />
-            {saving ? "Saving…" : "Save changes"}
+            {saving ? <Spinner size="xs" /> : <Icon name="check" size={14} />}
+            Save changes
           </button>
           {saved ? (
             <span className="faint text-xs text-[var(--success)]">
@@ -847,9 +850,10 @@ function OrgDangerZone() {
                   className="btn btn--danger btn--sm"
                   onClick={() => void destroy()}
                   disabled={deleting || confirmName !== organization.name}
+                  aria-busy={deleting || undefined}
                 >
-                  <Icon name="trash" size={14} />
-                  {deleting ? "Deleting…" : "Delete permanently"}
+                  {deleting ? <Spinner size="xs" /> : <Icon name="trash" size={14} />}
+                  Delete permanently
                 </button>
               </div>
             </div>

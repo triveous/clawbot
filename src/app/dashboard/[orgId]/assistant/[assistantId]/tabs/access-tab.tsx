@@ -3,6 +3,7 @@
 import { useState } from "react";
 import { useRpc } from "@/hooks/use-rpc";
 import { SectionCard, Field, Callout, Pill, Icon } from "@/components/dashboard";
+import { Spinner } from "@/components/ui/spinner";
 import type { AssistantResponse } from "@/types/assistant";
 
 export function AccessTab({
@@ -114,9 +115,10 @@ function SshAccess({
               className="btn btn--primary"
               onClick={save}
               disabled={saving || !ips.trim()}
+              aria-busy={saving || undefined}
             >
-              <Icon name="check" size={14} />
-              {saving ? "Saving…" : "Save"}
+              {saving ? <Spinner size="xs" /> : <Icon name="check" size={14} />}
+              Save
             </button>
           </div>
         </Field>
