@@ -333,14 +333,25 @@
   margin-bottom: 24px;
 }
 .page__title {
-  font-size: 26px;
-  font-weight: 600;
-  letter-spacing: -0.015em;
-  line-height: 1.1;
+  /* Editorial display: Instrument Serif at a heavier read-size, lighter
+     weight (serif faces look right at 400, not 600). The accent span keeps
+     the same family but tints — so "Billing & credits" reads as one phrase
+     in the design font, with the second half in OpenClaw red. */
+  font-family: var(--font-display);
+  font-size: 36px;
+  font-weight: 400;
+  letter-spacing: -0.01em;
+  line-height: 1.15;
 }
 .page__title .accent {
-  font-weight: 600;
+  font-family: var(--font-display);
+  font-weight: 400;
   color: var(--db-red);
+}
+.page__title .faint {
+  /* Numeric counters next to titles ("Members 4") read as oversized in serif;
+     drop them back to the sans body face. */
+  font-family: var(--font-sans);
 }
 .page__sub {
   font-size: 13px;
