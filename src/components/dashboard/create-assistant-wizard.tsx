@@ -81,9 +81,6 @@ export function CreateAssistantWizard({
   const [access, setAccess] = useState<AccessMode>("ssh");
   const [sshAllowedIps, setSshAllowedIps] = useState("0.0.0.0/0");
   const [tailscaleKey, setTailscaleKey] = useState("");
-  const [tsVerifying, setTsVerifying] = useState(false);
-  const [tsVerified, setTsVerified] = useState(false);
-  const [tsError, setTsError] = useState("");
 
   const [plans, setPlans] = useState<Plan[]>([]);
   const [credits, setCredits] = useState<Credit[]>([]);
@@ -147,27 +144,8 @@ export function CreateAssistantWizard({
   const canNext = [
     () => !!name.trim(),
     () => !!planId,
-    () => !!region && (access === "ssh" ? true : tsVerified),
+    () => !!region && (access === "ssh" ? true : !!tailscaleKey.trim()),
   ][step]();
-
-  const verifyTs = useCallback(async () => {
-    if (!tailscaleKey.trim()) return;
-    setTsVerifying(true);
-    setTsError("");
-    setTsVerified(false);
-    try {
-      const res = await rpc.api.tailscale.verify.$post({
-        json: { authKey: tailscaleKey.trim() },
-      });
-      const data = (await res.json()) as { valid: boolean };
-      if (res.ok && data.valid) setTsVerified(true);
-      else setTsError("Key is invalid or expired.");
-    } catch {
-      setTsError("Couldn't reach Tailscale.");
-    } finally {
-      setTsVerifying(false);
-    }
-  }, [rpc, tailscaleKey]);
 
   const deploy = useCallback(async () => {
     if (!selectedPlan || !canNext) return;
@@ -337,23 +315,11 @@ export function CreateAssistantWizard({
               region={region}
               setRegion={setRegion}
               access={access}
-              setAccess={(next) => {
-                setAccess(next);
-                setTsVerified(false);
-                setTsError("");
-              }}
+              setAccess={setAccess}
               sshAllowedIps={sshAllowedIps}
               setSshAllowedIps={setSshAllowedIps}
               tailscaleKey={tailscaleKey}
-              setTailscaleKey={(v) => {
-                setTailscaleKey(v);
-                setTsVerified(false);
-                setTsError("");
-              }}
-              tsVerified={tsVerified}
-              tsVerifying={tsVerifying}
-              tsError={tsError}
-              onVerify={verifyTs}
+              setTailscaleKey={setTailscaleKey}
             />
           )}
 
@@ -562,10 +528,6 @@ function StepAccess({
   setSshAllowedIps,
   tailscaleKey,
   setTailscaleKey,
-  tsVerified,
-  tsVerifying,
-  tsError,
-  onVerify,
 }: {
   region: string;
   setRegion: (r: string) => void;
@@ -575,10 +537,6 @@ function StepAccess({
   setSshAllowedIps: (v: string) => void;
   tailscaleKey: string;
   setTailscaleKey: (v: string) => void;
-  tsVerified: boolean;
-  tsVerifying: boolean;
-  tsError: string;
-  onVerify: () => void | Promise<void>;
 }) {
   return (
     <div className="faw__step">
@@ -663,27 +621,19 @@ function StepAccess({
       ) : (
         <div className="mt-4">
           <div className="faw__section-h">Tailscale auth key</div>
-          <div className="flex gap-2">
-            <input
-              className="input flex-1"
-              type="password"
-              placeholder="tskey-auth-…"
-              value={tailscaleKey}
-              onChange={(e) => setTailscaleKey(e.target.value)}
-            />
-            <button
-              type="button"
-              className={`btn ${tsVerified ? "btn--subtle" : "btn--ghost"}`}
-              onClick={() => void onVerify()}
-              disabled={!tailscaleKey.trim() || tsVerifying}
-            >
-              {tsVerified ? <Icon name="check" size={14} /> : null}
-              {tsVerified ? "Valid" : tsVerifying ? "Verifying…" : "Verify"}
-            </button>
-          </div>
-          {tsError ? <div className="field__err">{tsError}</div> : null}
-          <div className="faint text-xs mt-1.5">
-            Ephemeral reusable key. Verified once, never stored.
+          <input
+            className="input"
+            type="password"
+            placeholder="tskey-auth-…"
+            value={tailscaleKey}
+            onChange={(e) => setTailscaleKey(e.target.value)}
+          />
+          <div className="faw__tip mt-2">
+            <Icon name="alert" size={13} />
+            <span>
+              If this key is invalid or expired, provisioning will fail. You&rsquo;ll need to
+              delete the assistant and create a new one with a valid key.
+            </span>
           </div>
         </div>
       )}
