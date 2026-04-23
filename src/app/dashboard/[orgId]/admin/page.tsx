@@ -30,6 +30,14 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
 import { formatDate, formatPrice } from "@/lib/dashboard/format";
 
 // Hetzner server types available on our snapshot family; labelled so the
@@ -372,54 +380,60 @@ function PlansPanel() {
 
   return (
     <div className="flex flex-col gap-5">
-      {showForm ? (
-        <SectionCard
-          title="New plan"
-          sub="Create a new tier. If sync-to-Stripe is on, we'll create a Stripe Product + Price too."
-          actions={
+      <Dialog open={showForm} onOpenChange={setShowForm}>
+        <DialogContent className="sm:max-w-[640px] max-h-[calc(100vh-4rem)] overflow-y-auto">
+          <DialogHeader>
+            <DialogTitle className="font-[var(--font-instrument-serif)] text-[22px] font-normal">
+              New plan
+            </DialogTitle>
+            <DialogDescription>
+              Create a new tier. If sync-to-Stripe is on, we&rsquo;ll create a Stripe Product
+              + Price too.
+            </DialogDescription>
+          </DialogHeader>
+
+          <div className="flex flex-col gap-3 py-2">
+            <PlanForm
+              slug={slug}
+              setSlug={setSlug}
+              displayName={displayName}
+              setDisplayName={setDisplayName}
+              tagline={tagline}
+              setTagline={setTagline}
+              priceCents={priceCents}
+              setPriceCents={setPriceCents}
+              tier={tier}
+              setTier={setTier}
+              sortOrder={sortOrder}
+              setSortOrder={setSortOrder}
+              hetznerServerType={hetznerServerType}
+              setHetznerServerType={setHetznerServerType}
+              benefits={benefits}
+              setBenefits={setBenefits}
+              extra={
+                <label className="flex items-center gap-2 text-[13px]">
+                  <input
+                    type="checkbox"
+                    checked={syncToStripe}
+                    onChange={(e) => setSyncToStripe(e.target.checked)}
+                    className="size-4"
+                  />
+                  Sync to Stripe (creates Product + Price)
+                </label>
+              }
+            />
+            {error ? <div className="field__err">{error}</div> : null}
+          </div>
+
+          <DialogFooter>
             <button
               type="button"
-              className="btn btn--ghost btn--sm"
+              className="btn btn--ghost"
               onClick={() => setShowForm(false)}
+              disabled={saving}
             >
-              <Icon name="x" size={12} />
               Cancel
             </button>
-          }
-        >
-          <PlanForm
-            slug={slug}
-            setSlug={setSlug}
-            displayName={displayName}
-            setDisplayName={setDisplayName}
-            tagline={tagline}
-            setTagline={setTagline}
-            priceCents={priceCents}
-            setPriceCents={setPriceCents}
-            tier={tier}
-            setTier={setTier}
-            sortOrder={sortOrder}
-            setSortOrder={setSortOrder}
-            hetznerServerType={hetznerServerType}
-            setHetznerServerType={setHetznerServerType}
-            benefits={benefits}
-            setBenefits={setBenefits}
-            extra={
-              <label className="flex items-center gap-2 text-[13px]">
-                <input
-                  type="checkbox"
-                  checked={syncToStripe}
-                  onChange={(e) => setSyncToStripe(e.target.checked)}
-                  className="size-4"
-                />
-                Sync to Stripe (creates Product + Price)
-              </label>
-            }
-          />
-          {error ? (
-            <div className="field__err mt-3">{error}</div>
-          ) : null}
-          <div className="mt-4">
             <button
               type="button"
               className="btn btn--primary"
@@ -429,25 +443,23 @@ function PlansPanel() {
               <Icon name="check" size={14} />
               {saving ? "Creating…" : "Create plan"}
             </button>
-          </div>
-        </SectionCard>
-      ) : null}
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
 
       <SectionCard
         title="Plans"
         sub={`${plans.length} total · the customer-facing pricing tiers`}
         pad={false}
         actions={
-          !showForm ? (
-            <button
-              type="button"
-              className="btn btn--primary btn--sm"
-              onClick={() => setShowForm(true)}
-            >
-              <Icon name="plus" size={12} />
-              New plan
-            </button>
-          ) : null
+          <button
+            type="button"
+            className="btn btn--primary btn--sm"
+            onClick={() => setShowForm(true)}
+          >
+            <Icon name="plus" size={12} />
+            New plan
+          </button>
         }
       >
         {loading ? (
@@ -581,7 +593,7 @@ function PlansPanel() {
             </tbody>
           </table>
         )}
-        {!showForm && error ? (
+        {error ? (
           <div className="border-t border-border p-4">
             <div className="field__err">{error}</div>
           </div>
