@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useCallback } from "react";
+import { useCallback, useEffect, useState } from "react";
 import {
   getSnapshots,
   triggerSnapshotBuild,
@@ -13,11 +13,16 @@ import {
   mintCredit,
   revokeCredit,
 } from "./actions";
-import { Button } from "@/components/ui/button";
-import { Badge } from "@/components/ui/badge";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
+import {
+  SectionCard,
+  Field,
+  Callout,
+  Icon,
+  StatusPill,
+  RowMenu,
+  type RowMenuItem,
+  type IconName,
+} from "@/components/dashboard";
 import {
   Select,
   SelectContent,
@@ -25,6 +30,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
+import { formatDate, formatPrice } from "@/lib/dashboard/format";
 
 // Hetzner server types available on our snapshot family; labelled so the
 // platform admin can pick at a glance. Centralised so the Create Plan and
@@ -75,6 +81,14 @@ type Credit = {
   consumedByAssistantId: string | null;
 };
 
+type AdminTab = "snapshots" | "plans" | "credits";
+
+const TABS: { key: AdminTab; label: string; icon: IconName }[] = [
+  { key: "snapshots", label: "Snapshots", icon: "layers" },
+  { key: "plans", label: "Plans", icon: "tag" },
+  { key: "credits", label: "Credits", icon: "coins" },
+];
+
 // ─── Snapshots panel ──────────────────────────────────────────────────────────
 
 function SnapshotsPanel() {
@@ -98,7 +112,9 @@ function SnapshotsPanel() {
     }
   }, []);
 
-  useEffect(() => { load(); }, [load]);
+  useEffect(() => {
+    void load();
+  }, [load]);
 
   async function build() {
     if (!version.trim() || !openclawVersion.trim()) return;
@@ -111,57 +127,117 @@ function SnapshotsPanel() {
       setVersion("");
       setOpenclawVersion("");
       await load();
-    } catch { setError("Failed to start snapshot build"); }
-    finally { setBuilding(false); }
+    } catch {
+      setError("Failed to start snapshot build");
+    } finally {
+      setBuilding(false);
+    }
   }
 
   async function del(snapshotId: string) {
     setDeleting(snapshotId);
     setError("");
-    try { await triggerSnapshotDelete(snapshotId); await load(); }
-    catch { setError("Failed to start snapshot deletion"); }
-    finally { setDeleting(null); }
+    try {
+      await triggerSnapshotDelete(snapshotId);
+      await load();
+    } catch {
+      setError("Failed to start snapshot deletion");
+    } finally {
+      setDeleting(null);
+    }
   }
 
   return (
-    <div className="space-y-4">
-      <h2 className="text-lg font-semibold">Snapshots</h2>
-      <Card>
-        <CardHeader><CardTitle>Build New Snapshot</CardTitle></CardHeader>
-        <CardContent className="space-y-3">
-          <div className="flex flex-wrap gap-2">
-            <Input placeholder="Version (e.g. v1.0)" value={version} onChange={(e) => setVersion(e.target.value)} className="w-40" />
-            <Input placeholder="OpenClaw version" value={openclawVersion} onChange={(e) => setOpenclawVersion(e.target.value)} className="w-48" />
-            <Button onClick={build} disabled={building || !version.trim() || !openclawVersion.trim()}>
-              {building ? "Starting…" : "Build"}
-            </Button>
+    <div className="flex flex-col gap-5">
+      <SectionCard
+        title="Build new snapshot"
+        sub="Bake a fresh OpenClaw image. Existing assistants are untouched."
+      >
+        <div className="flex flex-wrap items-end gap-3">
+          <Field label="Version">
+            <input
+              className="input w-40"
+              placeholder="v1.0"
+              value={version}
+              onChange={(e) => setVersion(e.target.value)}
+            />
+          </Field>
+          <Field label="OpenClaw version">
+            <input
+              className="input w-48"
+              placeholder="v0.4.3"
+              value={openclawVersion}
+              onChange={(e) => setOpenclawVersion(e.target.value)}
+            />
+          </Field>
+          <button
+            type="button"
+            className="btn btn--primary"
+            onClick={() => void build()}
+            disabled={building || !version.trim() || !openclawVersion.trim()}
+          >
+            <Icon name="zap" size={14} />
+            {building ? "Starting…" : "Build snapshot"}
+          </button>
+        </div>
+        {runId ? (
+          <div className="faint mt-3 text-[11px] font-mono">
+            Started — <span className="text-foreground">{runId}</span>
           </div>
-          {runId && <p className="text-xs text-muted-foreground">Started — <span className="font-mono">{runId}</span></p>}
-          {error && <p className="text-sm text-destructive">{error}</p>}
-        </CardContent>
-      </Card>
+        ) : null}
+        {error ? (
+          <div className="field__err mt-3">{error}</div>
+        ) : null}
+      </SectionCard>
 
-      <div className="space-y-2">
+      <SectionCard title="Snapshots" sub={`${snaps.length} total`} pad={false}>
         {loading ? (
-          <p className="text-sm text-muted-foreground">Loading…</p>
+          <div className="p-6 text-[13px] text-muted-foreground">Loading…</div>
         ) : snaps.length === 0 ? (
-          <p className="text-sm text-muted-foreground">No snapshots.</p>
-        ) : snaps.map((snap) => (
-          <Card key={snap.id}>
-            <CardContent className="flex items-center justify-between py-3">
-              <div className="flex flex-wrap items-center gap-3">
-                {snap.isActive && <Badge>active</Badge>}
-                <span className="font-medium">{snap.version}</span>
-                <span className="text-xs text-muted-foreground">OpenClaw {snap.openclawVersion}</span>
-                <span className="font-mono text-xs text-muted-foreground">{snap.providerSnapshotId}</span>
-              </div>
-              <Button variant="destructive" size="sm" onClick={() => del(snap.id)} disabled={deleting === snap.id}>
-                {deleting === snap.id ? "Deleting…" : "Delete"}
-              </Button>
-            </CardContent>
-          </Card>
-        ))}
-      </div>
+          <div className="p-6 text-[13px] text-muted-foreground">No snapshots yet.</div>
+        ) : (
+          <table className="table">
+            <thead>
+              <tr>
+                <th>Version</th>
+                <th>OpenClaw</th>
+                <th>Status</th>
+                <th>Provider id</th>
+                <th>Created</th>
+                <th />
+              </tr>
+            </thead>
+            <tbody>
+              {snaps.map((snap) => (
+                <tr key={snap.id}>
+                  <td className="mono">{snap.version}</td>
+                  <td className="mono dim">{snap.openclawVersion}</td>
+                  <td>
+                    {snap.isActive ? (
+                      <span className="pill pill--active">Active</span>
+                    ) : (
+                      <span className="pill pill--default">Archived</span>
+                    )}
+                  </td>
+                  <td className="mono dim">{snap.providerSnapshotId}</td>
+                  <td className="dim">{formatDate(new Date(snap.createdAt).toISOString())}</td>
+                  <td className="text-right">
+                    <button
+                      type="button"
+                      className="btn btn--danger btn--sm"
+                      onClick={() => void del(snap.id)}
+                      disabled={deleting === snap.id}
+                    >
+                      <Icon name="trash" size={12} />
+                      {deleting === snap.id ? "Deleting…" : "Delete"}
+                    </button>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        )}
+      </SectionCard>
     </div>
   );
 }
@@ -175,7 +251,6 @@ function PlansPanel() {
   const [error, setError] = useState("");
   const [saving, setSaving] = useState(false);
 
-  // Create form state
   const [slug, setSlug] = useState("");
   const [displayName, setDisplayName] = useState("");
   const [tagline, setTagline] = useState("");
@@ -186,7 +261,6 @@ function PlansPanel() {
   const [sortOrder, setSortOrder] = useState("0");
   const [syncToStripe, setSyncToStripe] = useState(true);
 
-  // Edit state
   const [editingId, setEditingId] = useState<string | null>(null);
   const [editSlug, setEditSlug] = useState("");
   const [editDisplayName, setEditDisplayName] = useState("");
@@ -202,11 +276,16 @@ function PlansPanel() {
     try {
       const data = await getPlans();
       setPlans(data as Plan[]);
-    } catch { setError("Failed to load plans"); }
-    finally { setLoading(false); }
+    } catch {
+      setError("Failed to load plans");
+    } finally {
+      setLoading(false);
+    }
   }, []);
 
-  useEffect(() => { load(); }, [load]);
+  useEffect(() => {
+    void load();
+  }, [load]);
 
   async function save() {
     if (!slug.trim() || !displayName.trim() || !priceCents) return;
@@ -225,16 +304,30 @@ function PlansPanel() {
         syncToStripe,
       });
       setShowForm(false);
-      setSlug(""); setDisplayName(""); setTagline(""); setPriceCents(""); setTier("0");
-      setHetznerServerType("cx33"); setBenefits(""); setSortOrder("0"); setSyncToStripe(true);
+      setSlug("");
+      setDisplayName("");
+      setTagline("");
+      setPriceCents("");
+      setTier("0");
+      setHetznerServerType("cx33");
+      setBenefits("");
+      setSortOrder("0");
+      setSyncToStripe(true);
       await load();
-    } catch (e) { setError(String(e)); }
-    finally { setSaving(false); }
+    } catch (e) {
+      setError(String(e));
+    } finally {
+      setSaving(false);
+    }
   }
 
   async function toggle(planId: string, current: boolean) {
-    try { await togglePlanActive(planId, !current); await load(); }
-    catch { setError("Failed to update plan"); }
+    try {
+      await togglePlanActive(planId, !current);
+      await load();
+    } catch {
+      setError("Failed to update plan");
+    }
   }
 
   function startEdit(plan: Plan) {
@@ -245,7 +338,8 @@ function PlansPanel() {
     setEditPriceCents(String(plan.priceCents));
     setEditTier(String(plan.tier));
     setEditHetznerServerType(
-      (plan.providerSpec as { hetzner?: { serverType?: string } })?.hetzner?.serverType ?? "cx33"
+      (plan.providerSpec as { hetzner?: { serverType?: string } })?.hetzner?.serverType ??
+        "cx33",
     );
     setEditBenefits(plan.benefits.join("\n"));
     setEditSortOrder(String(plan.sortOrder));
@@ -269,215 +363,353 @@ function PlansPanel() {
       });
       setEditingId(null);
       await load();
-    } catch (e) { setEditError(String(e)); }
-    finally { setSaving(false); }
+    } catch (e) {
+      setEditError(String(e));
+    } finally {
+      setSaving(false);
+    }
   }
 
   return (
-    <div className="space-y-4">
-      <div className="flex items-center justify-between">
-        <h2 className="text-lg font-semibold">Plans</h2>
-        <Button size="sm" onClick={() => setShowForm((v) => !v)}>
-          {showForm ? "Cancel" : "New Plan"}
-        </Button>
+    <div className="flex flex-col gap-5">
+      {showForm ? (
+        <SectionCard
+          title="New plan"
+          sub="Create a new tier. If sync-to-Stripe is on, we'll create a Stripe Product + Price too."
+          actions={
+            <button
+              type="button"
+              className="btn btn--ghost btn--sm"
+              onClick={() => setShowForm(false)}
+            >
+              <Icon name="x" size={12} />
+              Cancel
+            </button>
+          }
+        >
+          <PlanForm
+            slug={slug}
+            setSlug={setSlug}
+            displayName={displayName}
+            setDisplayName={setDisplayName}
+            tagline={tagline}
+            setTagline={setTagline}
+            priceCents={priceCents}
+            setPriceCents={setPriceCents}
+            tier={tier}
+            setTier={setTier}
+            sortOrder={sortOrder}
+            setSortOrder={setSortOrder}
+            hetznerServerType={hetznerServerType}
+            setHetznerServerType={setHetznerServerType}
+            benefits={benefits}
+            setBenefits={setBenefits}
+            extra={
+              <label className="flex items-center gap-2 text-[13px]">
+                <input
+                  type="checkbox"
+                  checked={syncToStripe}
+                  onChange={(e) => setSyncToStripe(e.target.checked)}
+                  className="size-4"
+                />
+                Sync to Stripe (creates Product + Price)
+              </label>
+            }
+          />
+          {error ? (
+            <div className="field__err mt-3">{error}</div>
+          ) : null}
+          <div className="mt-4">
+            <button
+              type="button"
+              className="btn btn--primary"
+              onClick={() => void save()}
+              disabled={saving || !slug.trim() || !displayName.trim() || !priceCents}
+            >
+              <Icon name="check" size={14} />
+              {saving ? "Creating…" : "Create plan"}
+            </button>
+          </div>
+        </SectionCard>
+      ) : null}
+
+      <SectionCard
+        title="Plans"
+        sub={`${plans.length} total · the customer-facing pricing tiers`}
+        pad={false}
+        actions={
+          !showForm ? (
+            <button
+              type="button"
+              className="btn btn--primary btn--sm"
+              onClick={() => setShowForm(true)}
+            >
+              <Icon name="plus" size={12} />
+              New plan
+            </button>
+          ) : null
+        }
+      >
+        {loading ? (
+          <div className="p-6 text-[13px] text-muted-foreground">Loading…</div>
+        ) : plans.length === 0 ? (
+          <div className="p-6 text-[13px] text-muted-foreground">No plans yet.</div>
+        ) : (
+          <table className="table">
+            <thead>
+              <tr>
+                <th>Plan</th>
+                <th>Status</th>
+                <th>Price</th>
+                <th>Tier</th>
+                <th>Server type</th>
+                <th>Stripe</th>
+                <th />
+              </tr>
+            </thead>
+            <tbody>
+              {plans.map((plan) => {
+                const ids = plan.billingProviderIds as {
+                  stripeProductId?: string;
+                  stripePriceId?: string;
+                };
+                const hetz = (
+                  plan.providerSpec as { hetzner?: { serverType?: string } }
+                )?.hetzner?.serverType;
+                const menu: RowMenuItem[] = [
+                  {
+                    label: editingId === plan.id ? "Close edit" : "Edit plan",
+                    icon: "edit",
+                    onClick: () =>
+                      editingId === plan.id ? setEditingId(null) : startEdit(plan),
+                  },
+                  { divider: true },
+                  {
+                    label: plan.isActive ? "Deactivate" : "Activate",
+                    icon: plan.isActive ? "pause" : "play",
+                    onClick: () => void toggle(plan.id, plan.isActive),
+                  },
+                ];
+                return (
+                  <>
+                    <tr key={plan.id} className={plan.isActive ? "" : "opacity-60"}>
+                      <td>
+                        <div className="flex flex-col gap-0.5">
+                          <span className="font-medium">{plan.displayName}</span>
+                          <span className="mono faint text-[11px]">{plan.slug}</span>
+                        </div>
+                      </td>
+                      <td>
+                        {plan.isActive ? (
+                          <StatusPill status="active" />
+                        ) : (
+                          <span className="pill pill--default">Inactive</span>
+                        )}
+                      </td>
+                      <td className="mono">
+                        {formatPrice(plan.priceCents, "USD")}
+                        <span className="faint">/mo</span>
+                      </td>
+                      <td className="dim text-xs">tier {plan.tier}</td>
+                      <td className="mono dim">{hetz ?? "—"}</td>
+                      <td>
+                        {ids?.stripePriceId ? (
+                          <span className="mono dim text-[11px]">
+                            {ids.stripePriceId.slice(0, 16)}…
+                          </span>
+                        ) : (
+                          <span className="pill pill--warn">Missing</span>
+                        )}
+                      </td>
+                      <td className="text-right">
+                        <RowMenu items={menu} />
+                      </td>
+                    </tr>
+                    {editingId === plan.id ? (
+                      <tr key={`${plan.id}-edit`}>
+                        <td
+                          colSpan={7}
+                          className="border-t border-border bg-muted px-[18px] py-4"
+                        >
+                          <div className="flex flex-col gap-3">
+                            <PlanForm
+                              slug={editSlug}
+                              setSlug={setEditSlug}
+                              displayName={editDisplayName}
+                              setDisplayName={setEditDisplayName}
+                              tagline={editTagline}
+                              setTagline={setEditTagline}
+                              priceCents={editPriceCents}
+                              setPriceCents={setEditPriceCents}
+                              tier={editTier}
+                              setTier={setEditTier}
+                              sortOrder={editSortOrder}
+                              setSortOrder={setEditSortOrder}
+                              hetznerServerType={editHetznerServerType}
+                              setHetznerServerType={setEditHetznerServerType}
+                              benefits={editBenefits}
+                              setBenefits={setEditBenefits}
+                            />
+                            {editError ? (
+                              <div className="field__err">{editError}</div>
+                            ) : null}
+                            <div className="flex gap-2">
+                              <button
+                                type="button"
+                                className="btn btn--primary btn--sm"
+                                onClick={() => void saveEdit()}
+                                disabled={saving}
+                              >
+                                <Icon name="check" size={12} />
+                                {saving ? "Saving…" : "Save changes"}
+                              </button>
+                              <button
+                                type="button"
+                                className="btn btn--ghost btn--sm"
+                                onClick={() => setEditingId(null)}
+                              >
+                                Cancel
+                              </button>
+                            </div>
+                          </div>
+                        </td>
+                      </tr>
+                    ) : null}
+                  </>
+                );
+              })}
+            </tbody>
+          </table>
+        )}
+        {!showForm && error ? (
+          <div className="border-t border-border p-4">
+            <div className="field__err">{error}</div>
+          </div>
+        ) : null}
+      </SectionCard>
+    </div>
+  );
+}
+
+function PlanForm({
+  slug,
+  setSlug,
+  displayName,
+  setDisplayName,
+  tagline,
+  setTagline,
+  priceCents,
+  setPriceCents,
+  tier,
+  setTier,
+  sortOrder,
+  setSortOrder,
+  hetznerServerType,
+  setHetznerServerType,
+  benefits,
+  setBenefits,
+  extra,
+}: {
+  slug: string;
+  setSlug: (v: string) => void;
+  displayName: string;
+  setDisplayName: (v: string) => void;
+  tagline: string;
+  setTagline: (v: string) => void;
+  priceCents: string;
+  setPriceCents: (v: string) => void;
+  tier: string;
+  setTier: (v: string) => void;
+  sortOrder: string;
+  setSortOrder: (v: string) => void;
+  hetznerServerType: string;
+  setHetznerServerType: (v: string) => void;
+  benefits: string;
+  setBenefits: (v: string) => void;
+  extra?: React.ReactNode;
+}) {
+  return (
+    <div className="flex flex-col gap-3">
+      <div className="grid2 gap-3">
+        <Field label="Slug">
+          <input
+            className="input"
+            placeholder="go"
+            value={slug}
+            onChange={(e) => setSlug(e.target.value)}
+          />
+        </Field>
+        <Field label="Display name">
+          <input
+            className="input"
+            placeholder="Go"
+            value={displayName}
+            onChange={(e) => setDisplayName(e.target.value)}
+          />
+        </Field>
+        <Field label="Tagline">
+          <input
+            className="input"
+            placeholder="Personal assistant for daily use"
+            value={tagline}
+            onChange={(e) => setTagline(e.target.value)}
+          />
+        </Field>
+        <Field label="Price (cents/mo)">
+          <input
+            className="input"
+            type="number"
+            placeholder="2900"
+            value={priceCents}
+            onChange={(e) => setPriceCents(e.target.value)}
+          />
+        </Field>
+        <Field label="Tier">
+          <input
+            className="input"
+            type="number"
+            value={tier}
+            onChange={(e) => setTier(e.target.value)}
+          />
+        </Field>
+        <Field label="Sort order">
+          <input
+            className="input"
+            type="number"
+            value={sortOrder}
+            onChange={(e) => setSortOrder(e.target.value)}
+          />
+        </Field>
       </div>
-
-      {showForm && (
-        <Card>
-          <CardHeader><CardTitle>Create Plan</CardTitle></CardHeader>
-          <CardContent className="space-y-3">
-            <div className="grid gap-3 sm:grid-cols-2">
-              <div className="flex flex-col gap-1">
-                <Label>Slug</Label>
-                <Input placeholder="go" value={slug} onChange={(e) => setSlug(e.target.value)} />
-              </div>
-              <div className="flex flex-col gap-1">
-                <Label>Display Name</Label>
-                <Input placeholder="Go" value={displayName} onChange={(e) => setDisplayName(e.target.value)} />
-              </div>
-              <div className="flex flex-col gap-1">
-                <Label>Tagline</Label>
-                <Input placeholder="Personal assistant for daily use" value={tagline} onChange={(e) => setTagline(e.target.value)} />
-              </div>
-              <div className="flex flex-col gap-1">
-                <Label>Price (cents/mo)</Label>
-                <Input type="number" placeholder="2900" value={priceCents} onChange={(e) => setPriceCents(e.target.value)} />
-              </div>
-              <div className="flex flex-col gap-1">
-                <Label>Tier (0, 1, 2…)</Label>
-                <Input type="number" value={tier} onChange={(e) => setTier(e.target.value)} />
-              </div>
-              <div className="flex flex-col gap-1">
-                <Label>Sort Order</Label>
-                <Input type="number" value={sortOrder} onChange={(e) => setSortOrder(e.target.value)} />
-              </div>
-            </div>
-            <div className="flex flex-col gap-1">
-              <Label>Hetzner Server Type</Label>
-              <Select
-                value={hetznerServerType}
-                onValueChange={(v) => {
-                  if (v) setHetznerServerType(v);
-                }}
-              >
-                <SelectTrigger className="w-full">
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  {HETZNER_SERVER_TYPES.map((t) => (
-                    <SelectItem key={t.value} value={t.value}>
-                      {t.label}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
-            <div className="flex flex-col gap-1">
-              <Label>Benefits (one per line)</Label>
-              <textarea
-                value={benefits}
-                onChange={(e) => setBenefits(e.target.value)}
-                placeholder={"2 vCPU\n4 GB RAM\n40 GB SSD"}
-                rows={4}
-                className="rounded-md border border-border bg-background px-3 py-2 text-sm"
-              />
-            </div>
-            <label className="flex items-center gap-2 text-sm">
-              <input
-                type="checkbox"
-                checked={syncToStripe}
-                onChange={(e) => setSyncToStripe(e.target.checked)}
-                className="size-4"
-              />
-              Sync to Stripe (creates Product + Price)
-            </label>
-            {error && <p className="text-sm text-destructive">{error}</p>}
-            <Button onClick={save} disabled={saving || !slug.trim() || !displayName.trim() || !priceCents}>
-              {saving ? "Saving…" : "Create Plan"}
-            </Button>
-          </CardContent>
-        </Card>
-      )}
-
-      {loading ? (
-        <p className="text-sm text-muted-foreground">Loading…</p>
-      ) : plans.length === 0 ? (
-        <p className="text-sm text-muted-foreground">No plans yet.</p>
-      ) : (
-        <div className="space-y-2">
-          {plans.map((plan) => (
-            <Card key={plan.id} className={plan.isActive ? "" : "opacity-50"}>
-              <CardContent className="py-3 space-y-3">
-                <div className="flex items-center justify-between">
-                  <div className="flex flex-wrap items-center gap-3">
-                    <Badge variant={plan.isActive ? "default" : "outline"}>
-                      {plan.isActive ? "active" : "inactive"}
-                    </Badge>
-                    <span className="font-medium">{plan.displayName}</span>
-                    <span className="font-mono text-xs text-muted-foreground">{plan.slug}</span>
-                    <span className="text-xs text-muted-foreground">tier {plan.tier}</span>
-                    <span className="text-xs text-muted-foreground">
-                      ${(plan.priceCents / 100).toFixed(2)}/mo
-                    </span>
-                    <span className="font-mono text-xs text-muted-foreground">
-                      {(plan.providerSpec as { hetzner?: { serverType?: string } })?.hetzner?.serverType ?? "—"}
-                    </span>
-                    {(() => {
-                      const ids = plan.billingProviderIds as {
-                        stripeProductId?: string;
-                        stripePriceId?: string;
-                      };
-                      if (!ids?.stripePriceId) {
-                        return (
-                          <Badge variant="outline" className="text-xs">no Stripe</Badge>
-                        );
-                      }
-                      return (
-                        <span className="font-mono text-xs text-muted-foreground">
-                          {ids.stripePriceId}
-                        </span>
-                      );
-                    })()}
-                  </div>
-                  <div className="flex gap-2">
-                    <Button variant="outline" size="sm" onClick={() => editingId === plan.id ? setEditingId(null) : startEdit(plan)}>
-                      {editingId === plan.id ? "Cancel" : "Edit"}
-                    </Button>
-                    <Button variant="outline" size="sm" onClick={() => toggle(plan.id, plan.isActive)}>
-                      {plan.isActive ? "Deactivate" : "Activate"}
-                    </Button>
-                  </div>
-                </div>
-
-                {editingId === plan.id && (
-                  <div className="border-t pt-3 space-y-3">
-                    <div className="grid gap-3 sm:grid-cols-2">
-                      <div className="flex flex-col gap-1">
-                        <Label>Slug</Label>
-                        <Input value={editSlug} onChange={(e) => setEditSlug(e.target.value)} />
-                      </div>
-                      <div className="flex flex-col gap-1">
-                        <Label>Display Name</Label>
-                        <Input value={editDisplayName} onChange={(e) => setEditDisplayName(e.target.value)} />
-                      </div>
-                      <div className="flex flex-col gap-1">
-                        <Label>Tagline</Label>
-                        <Input value={editTagline} onChange={(e) => setEditTagline(e.target.value)} />
-                      </div>
-                      <div className="flex flex-col gap-1">
-                        <Label>Price (cents/mo)</Label>
-                        <Input type="number" value={editPriceCents} onChange={(e) => setEditPriceCents(e.target.value)} />
-                      </div>
-                      <div className="flex flex-col gap-1">
-                        <Label>Tier</Label>
-                        <Input type="number" value={editTier} onChange={(e) => setEditTier(e.target.value)} />
-                      </div>
-                      <div className="flex flex-col gap-1">
-                        <Label>Sort Order</Label>
-                        <Input type="number" value={editSortOrder} onChange={(e) => setEditSortOrder(e.target.value)} />
-                      </div>
-                    </div>
-                    <div className="flex flex-col gap-1">
-                      <Label>Hetzner Server Type</Label>
-                      <Select
-                        value={editHetznerServerType}
-                        onValueChange={(v) => {
-                          if (v) setEditHetznerServerType(v);
-                        }}
-                      >
-                        <SelectTrigger className="w-full">
-                          <SelectValue />
-                        </SelectTrigger>
-                        <SelectContent>
-                          {HETZNER_SERVER_TYPES.map((t) => (
-                            <SelectItem key={t.value} value={t.value}>
-                              {t.label}
-                            </SelectItem>
-                          ))}
-                        </SelectContent>
-                      </Select>
-                    </div>
-                    <div className="flex flex-col gap-1">
-                      <Label>Benefits (one per line)</Label>
-                      <textarea
-                        value={editBenefits}
-                        onChange={(e) => setEditBenefits(e.target.value)}
-                        rows={3}
-                        className="rounded-md border border-border bg-background px-3 py-2 text-sm"
-                      />
-                    </div>
-                    {editError && <p className="text-sm text-destructive">{editError}</p>}
-                    <Button size="sm" onClick={saveEdit} disabled={saving}>
-                      {saving ? "Saving…" : "Save changes"}
-                    </Button>
-                  </div>
-                )}
-              </CardContent>
-            </Card>
-          ))}
-        </div>
-      )}
-      {!showForm && error && <p className="text-sm text-destructive">{error}</p>}
+      <Field label="Hetzner server type">
+        <Select
+          value={hetznerServerType}
+          onValueChange={(v) => {
+            if (v) setHetznerServerType(v);
+          }}
+        >
+          <SelectTrigger className="w-full">
+            <SelectValue />
+          </SelectTrigger>
+          <SelectContent>
+            {HETZNER_SERVER_TYPES.map((t) => (
+              <SelectItem key={t.value} value={t.value}>
+                {t.label}
+              </SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
+      </Field>
+      <Field label="Benefits" hint="One per line. Shown on the pricing page.">
+        <textarea
+          className="input min-h-[96px] py-2"
+          rows={4}
+          placeholder={"2 vCPU\n4 GB RAM\n40 GB SSD"}
+          value={benefits}
+          onChange={(e) => setBenefits(e.target.value)}
+        />
+      </Field>
+      {extra}
     </div>
   );
 }
@@ -510,8 +742,11 @@ function CreditsPanel() {
     try {
       const data = await getCreditsForOrg(orgId.trim());
       setCredits(data as Credit[]);
-    } catch { setError("Failed to load credits"); }
-    finally { setLoadingCredits(false); }
+    } catch {
+      setError("Failed to load credits");
+    } finally {
+      setLoadingCredits(false);
+    }
   }
 
   async function mint() {
@@ -519,99 +754,164 @@ function CreditsPanel() {
     setMinting(true);
     setError("");
     try {
-      await mintCredit({ orgId: orgId.trim(), planId: mintPlanId, durationDays: parseInt(mintDays, 10) || 30 });
+      await mintCredit({
+        orgId: orgId.trim(),
+        planId: mintPlanId,
+        durationDays: parseInt(mintDays, 10) || 30,
+      });
       await loadCredits();
-    } catch { setError("Failed to mint credit"); }
-    finally { setMinting(false); }
+    } catch {
+      setError("Failed to mint credit");
+    } finally {
+      setMinting(false);
+    }
   }
 
   async function revoke(creditId: string) {
-    try { await revokeCredit(creditId); await loadCredits(); }
-    catch { setError("Failed to revoke credit"); }
+    try {
+      await revokeCredit(creditId);
+      await loadCredits();
+    } catch {
+      setError("Failed to revoke credit");
+    }
   }
 
+  const planById = new Map(plans.map((p) => [p.id, p]));
+
   return (
-    <div className="space-y-4">
-      <h2 className="text-lg font-semibold">Credits</h2>
-
-      <Card>
-        <CardHeader><CardTitle>Mint Credit</CardTitle></CardHeader>
-        <CardContent className="space-y-3">
-          <div className="flex flex-wrap items-end gap-3">
-            <div className="flex flex-col gap-1">
-              <Label>Org ID</Label>
-              <Input
-                placeholder="org_xxx"
-                value={orgId}
-                onChange={(e) => setOrgId(e.target.value)}
-                className="w-56"
-              />
-            </div>
-            <div className="flex flex-col gap-1">
-              <Label>Plan</Label>
-              <Select
-                value={mintPlanId}
-                onValueChange={(v) => {
-                  if (v) setMintPlanId(v);
-                }}
-              >
-                <SelectTrigger className="w-48">
-                  <SelectValue placeholder="Select plan" />
-                </SelectTrigger>
-                <SelectContent>
-                  {plans.map((p) => (
-                    <SelectItem key={p.id} value={p.id}>
-                      {p.displayName}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
-            <div className="flex flex-col gap-1">
-              <Label>Duration (days)</Label>
-              <Input type="number" value={mintDays} onChange={(e) => setMintDays(e.target.value)} className="w-24" />
-            </div>
-            <Button onClick={mint} disabled={minting || !orgId.trim() || !mintPlanId}>
-              {minting ? "Minting…" : "Mint"}
-            </Button>
-            <Button variant="outline" onClick={loadCredits} disabled={loadingCredits || !orgId.trim()}>
-              {loadingCredits ? "Loading…" : "Load"}
-            </Button>
-          </div>
-          {error && <p className="text-sm text-destructive">{error}</p>}
-        </CardContent>
-      </Card>
-
-      {credits.length > 0 && (
-        <div className="space-y-2">
-          {credits.map((credit) => (
-            <Card key={credit.id}>
-              <CardContent className="flex items-center justify-between py-3">
-                <div className="flex flex-wrap items-center gap-3">
-                  <Badge variant={credit.status === "active" ? "default" : "outline"}>
-                    {credit.status}
-                  </Badge>
-                  <span className="font-mono text-xs text-muted-foreground">{credit.id.slice(0, 8)}</span>
-                  <span className="text-xs text-muted-foreground">{credit.source}</span>
-                  {credit.currentPeriodEnd && (
-                    <span className="text-xs text-muted-foreground">
-                      exp {new Date(credit.currentPeriodEnd).toLocaleDateString()}
-                    </span>
-                  )}
-                  {credit.consumedByAssistantId && (
-                    <span className="text-xs text-muted-foreground">in use</span>
-                  )}
-                </div>
-                {credit.status === "active" && (
-                  <Button variant="destructive" size="sm" onClick={() => revoke(credit.id)}>
-                    Revoke
-                  </Button>
-                )}
-              </CardContent>
-            </Card>
-          ))}
+    <div className="flex flex-col gap-5">
+      <SectionCard
+        title="Mint or load credits for an org"
+        sub="Granted credits don't trigger a Stripe charge. Useful for trials and incidents."
+      >
+        <div className="flex flex-wrap items-end gap-3">
+          <Field label="Org ID" hint="org_xxx — copy from the org switcher">
+            <input
+              className="input w-64"
+              placeholder="org_xxx"
+              value={orgId}
+              onChange={(e) => setOrgId(e.target.value)}
+            />
+          </Field>
+          <Field label="Plan">
+            <Select
+              value={mintPlanId}
+              onValueChange={(v) => {
+                if (v) setMintPlanId(v);
+              }}
+            >
+              <SelectTrigger className="w-48">
+                <SelectValue placeholder="Select plan" />
+              </SelectTrigger>
+              <SelectContent>
+                {plans.map((p) => (
+                  <SelectItem key={p.id} value={p.id}>
+                    {p.displayName}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </Field>
+          <Field label="Duration (days)">
+            <input
+              className="input w-24"
+              type="number"
+              value={mintDays}
+              onChange={(e) => setMintDays(e.target.value)}
+            />
+          </Field>
+          <button
+            type="button"
+            className="btn btn--primary"
+            onClick={() => void mint()}
+            disabled={minting || !orgId.trim() || !mintPlanId}
+          >
+            <Icon name="plus" size={14} />
+            {minting ? "Minting…" : "Mint credit"}
+          </button>
+          <button
+            type="button"
+            className="btn btn--ghost"
+            onClick={() => void loadCredits()}
+            disabled={loadingCredits || !orgId.trim()}
+          >
+            <Icon name="refresh" size={14} />
+            {loadingCredits ? "Loading…" : "Load org credits"}
+          </button>
         </div>
-      )}
+        {error ? <div className="field__err mt-3">{error}</div> : null}
+      </SectionCard>
+
+      {credits.length > 0 ? (
+        <SectionCard
+          title="Credits for org"
+          sub={`${credits.length} total — granted + Stripe-backed`}
+          pad={false}
+        >
+          <table className="table">
+            <thead>
+              <tr>
+                <th>Credit</th>
+                <th>Plan</th>
+                <th>Status</th>
+                <th>Source</th>
+                <th>Expires</th>
+                <th>Attached</th>
+                <th />
+              </tr>
+            </thead>
+            <tbody>
+              {credits.map((credit) => {
+                const plan = planById.get(credit.planId);
+                return (
+                  <tr key={credit.id}>
+                    <td className="mono dim">{credit.id.slice(0, 10)}</td>
+                    <td>{plan?.displayName ?? "—"}</td>
+                    <td>
+                      <StatusPill status={credit.status} />
+                    </td>
+                    <td>
+                      {credit.source === "stripe" ? (
+                        "Stripe"
+                      ) : credit.source === "granted" ? (
+                        <span className="pill pill--info">Granted</span>
+                      ) : (
+                        credit.source
+                      )}
+                    </td>
+                    <td className="dim mono">
+                      {credit.currentPeriodEnd
+                        ? formatDate(new Date(credit.currentPeriodEnd).toISOString())
+                        : "—"}
+                    </td>
+                    <td>
+                      {credit.consumedByAssistantId ? (
+                        <span className="mono faint text-[11px]">
+                          {credit.consumedByAssistantId.slice(0, 10)}
+                        </span>
+                      ) : (
+                        <span className="faint">Available</span>
+                      )}
+                    </td>
+                    <td className="text-right">
+                      {credit.status === "active" ? (
+                        <button
+                          type="button"
+                          className="btn btn--danger btn--sm"
+                          onClick={() => void revoke(credit.id)}
+                        >
+                          <Icon name="trash" size={12} />
+                          Revoke
+                        </button>
+                      ) : null}
+                    </td>
+                  </tr>
+                );
+              })}
+            </tbody>
+          </table>
+        </SectionCard>
+      ) : null}
     </div>
   );
 }
@@ -619,30 +919,44 @@ function CreditsPanel() {
 // ─── Page ─────────────────────────────────────────────────────────────────────
 
 export default function AdminPage() {
+  const [tab, setTab] = useState<AdminTab>("snapshots");
+
   return (
     <div>
       <div className="page__head">
         <div>
           <h1 className="page__title">
-            Admin{" "}
-            <span
-              className="accent"
-              style={{ fontFamily: "var(--font-instrument-serif)" }}
-            >
-              console
-            </span>
+            Admin <span className="accent">console</span>
           </h1>
           <div className="page__sub">
             Platform-level operations. Snapshots, plans, and credits live here — only
             visible to platform admins.
           </div>
         </div>
+        <div className="page__actions">
+          <Callout kind="warn" icon="shield">
+            Staff only
+          </Callout>
+        </div>
       </div>
-      <div className="space-y-10">
-        <SnapshotsPanel />
-        <PlansPanel />
-        <CreditsPanel />
+
+      <div className="tabs">
+        {TABS.map((t) => (
+          <button
+            key={t.key}
+            type="button"
+            className={`tabs__tab${tab === t.key ? " is-active" : ""}`}
+            onClick={() => setTab(t.key)}
+          >
+            <Icon name={t.icon} size={14} />
+            {t.label}
+          </button>
+        ))}
       </div>
+
+      {tab === "snapshots" ? <SnapshotsPanel /> : null}
+      {tab === "plans" ? <PlansPanel /> : null}
+      {tab === "credits" ? <CreditsPanel /> : null}
     </div>
   );
 }
