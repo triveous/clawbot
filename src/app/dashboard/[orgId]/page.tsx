@@ -13,6 +13,8 @@ import {
   CreateAssistantWizard,
   FirstAssistantHero,
 } from "@/components/dashboard";
+import { SkeletonKPI, SkeletonRow } from "@/components/ui/skeleton";
+import { Spinner } from "@/components/ui/spinner";
 import { useOrganization } from "@clerk/nextjs";
 import { relTime } from "@/lib/dashboard/format";
 import type { AssistantResponse, AssistantStatus } from "@/types/assistant";
@@ -152,9 +154,17 @@ export default function AssistantsPage({
 
   if (loading) {
     return (
-      <div className="page__loading">
-        <Icon name="bot" size={20} />
-        Loading assistants…
+      <div>
+        <div className="page__head">
+          <div>
+            <h1 className="page__title">Assistants</h1>
+            <div className="page__sub">
+              Your running OpenClaw instances.
+            </div>
+          </div>
+        </div>
+        <SkeletonKPI count={4} className="mb-5" />
+        <SkeletonRow rows={4} avatar />
       </div>
     );
   }
@@ -304,10 +314,15 @@ export default function AssistantsPage({
                       type="button"
                       className="btn btn--ghost btn--sm"
                       disabled={!!retrying[a.id]}
+                      aria-busy={!!retrying[a.id] || undefined}
                       onClick={() => retry(a.id)}
                     >
-                      <Icon name="refresh" size={14} />
-                      {retrying[a.id] ? "Retrying…" : "Retry"}
+                      {retrying[a.id] ? (
+                        <Spinner size="xs" />
+                      ) : (
+                        <Icon name="refresh" size={14} />
+                      )}
+                      Retry
                     </button>
                   ) : null}
                   <span className="btn btn--ghost btn--sm" aria-hidden>

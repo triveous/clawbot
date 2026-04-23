@@ -5,6 +5,7 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useClerk, useUser } from "@clerk/nextjs";
 import { Icon } from "./icon";
+import { Skeleton } from "@/components/ui/skeleton";
 
 function initials(name: string | null, email: string | null | undefined) {
   const src = name?.trim() || email?.trim() || "";
@@ -50,11 +51,13 @@ export function UserChip({
 
   if (!isLoaded) {
     return (
-      <div className="userchip cursor-default">
-        <div className="userchip__avatar" />
-        <div className="flex-1 min-w-0">
-          <div className="userchip__name">Loading…</div>
+      <div className="userchip cursor-default" aria-busy="true" role="status">
+        <Skeleton className="size-7 rounded-full" />
+        <div className="flex-1 min-w-0 space-y-1.5">
+          <Skeleton className="h-3 w-24" />
+          <Skeleton className="h-2.5 w-16" />
         </div>
+        <span className="sr-only">Loading user</span>
       </div>
     );
   }

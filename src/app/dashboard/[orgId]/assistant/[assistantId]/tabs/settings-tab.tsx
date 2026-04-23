@@ -4,6 +4,7 @@ import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { useRpc } from "@/hooks/use-rpc";
 import { SectionCard, Callout, Icon } from "@/components/dashboard";
+import { Spinner } from "@/components/ui/spinner";
 import type { AssistantResponse } from "@/types/assistant";
 
 export function SettingsTab({
@@ -62,9 +63,10 @@ export function SettingsTab({
               className="btn btn--primary"
               onClick={retry}
               disabled={retrying}
+              aria-busy={retrying || undefined}
             >
-              <Icon name="refresh" size={14} />
-              {retrying ? "Retrying…" : "Retry provisioning"}
+              {retrying ? <Spinner size="xs" /> : <Icon name="refresh" size={14} />}
+              Retry provisioning
             </button>
           </div>
         </SectionCard>
@@ -129,9 +131,10 @@ export function SettingsTab({
                   className="btn btn--danger btn--sm"
                   onClick={handleDelete}
                   disabled={deleting || confirmName !== a.name}
+                  aria-busy={deleting || undefined}
                 >
-                  <Icon name="trash" size={14} />
-                  {deleting ? "Deleting…" : "Delete permanently"}
+                  {deleting ? <Spinner size="xs" /> : <Icon name="trash" size={14} />}
+                  Delete permanently
                 </button>
               </div>
             </div>

@@ -5,6 +5,7 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useOrganization, useOrganizationList } from "@clerk/nextjs";
 import { Icon } from "./icon";
+import { Skeleton } from "@/components/ui/skeleton";
 
 // Deterministic avatar gradient keyed off org id, so the same org always gets
 // the same orange/blue/etc colour without us having to persist it.
@@ -153,7 +154,9 @@ export function OrgSwitcher({
       ) : (
         <div className="orgmenu__avatar" />
       )}
-      <div className="orgswitch__name">{current?.name ?? "Loading…"}</div>
+      <div className="orgswitch__name">
+        {current?.name ?? <Skeleton className="inline-block h-3 w-20 align-middle" />}
+      </div>
       <span className="orgswitch__caret">
         <Icon name="chevDown" size={12} />
       </span>
@@ -174,14 +177,10 @@ export function OrgSwitcher({
           </div>
 
           {!isLoaded ? (
-            <div
-              style={{
-                padding: "8px 12px",
-                fontSize: 12,
-                color: "var(--db-text-dim)",
-              }}
-            >
-              Loading…
+            <div className="px-3 py-2 space-y-2" aria-busy="true" role="status">
+              <Skeleton className="h-3.5 w-40" />
+              <Skeleton className="h-3.5 w-32" />
+              <span className="sr-only">Loading organizations</span>
             </div>
           ) : memberships.length === 0 ? (
             <div

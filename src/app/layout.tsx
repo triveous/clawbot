@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 import { ClerkProvider } from "@clerk/nextjs";
 import { Geist, Geist_Mono, Instrument_Serif } from "next/font/google";
+import { Toaster } from "sonner";
 import "./globals.css";
 
 const geistSans = Geist({
@@ -43,7 +44,20 @@ export default function RootLayout({
            same) — React still hydrates; we're only silencing the noise. */
         suppressHydrationWarning
       >
-        <body className="min-h-full flex flex-col">{children}</body>
+        <body className="min-h-full flex flex-col">
+          {children}
+          <Toaster
+            richColors
+            position="bottom-right"
+            closeButton
+            toastOptions={{
+              classNames: {
+                toast:
+                  "group border border-border bg-background text-foreground",
+              },
+            }}
+          />
+        </body>
       </html>
     </ClerkProvider>
   );

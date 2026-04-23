@@ -3,6 +3,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { useRpc } from "@/hooks/use-rpc";
 import { Icon, Field, Callout, Segmented } from "@/components/dashboard";
+import { Spinner } from "@/components/ui/spinner";
 import {
   Select,
   SelectContent,
@@ -358,9 +359,10 @@ export function CreateAssistantDrawer({
             className="btn btn--primary"
             onClick={deploy}
             disabled={!canCreate}
+            aria-busy={creating || undefined}
           >
-            <Icon name="zap" size={14} />
-            {creating ? "Deploying…" : "Deploy assistant"}
+            {creating ? <Spinner size="xs" /> : <Icon name="zap" size={14} />}
+            Deploy assistant
           </button>
         </div>
       </div>

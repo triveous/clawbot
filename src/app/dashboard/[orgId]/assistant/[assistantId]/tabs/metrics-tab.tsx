@@ -9,6 +9,7 @@ import {
   Icon,
   type MetricSeries,
 } from "@/components/dashboard";
+import { Spinner } from "@/components/ui/spinner";
 import { makeTrace, formatTimeLabels } from "@/lib/dashboard/traces";
 import type { AssistantResponse } from "@/types/assistant";
 
@@ -153,13 +154,14 @@ export function MetricsTab({ a }: { a: AssistantResponse }) {
           onClick={() => void loadCpu()}
           title="Refresh metrics"
           disabled={loading}
+          aria-busy={loading || undefined}
         >
-          <Icon name="refresh" size={14} />
-          {loading ? "Refreshing…" : "Refresh"}
+          {loading ? <Spinner size="xs" /> : <Icon name="refresh" size={14} />}
+          Refresh
         </button>
       </div>
 
-      <SectionCard title={`CPU usage${loading ? " · loading" : ""}`}>
+      <SectionCard title="CPU usage">
         <div className="chart__stats" style={{ marginBottom: 16 }}>
           <Stat label="CPU" values={cpuValues} unit="%" color={COLOR.cpu} />
         </div>
