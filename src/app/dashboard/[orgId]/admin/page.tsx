@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
+import { Fragment, useCallback, useEffect, useState } from "react";
 import {
   getSnapshots,
   triggerSnapshotBuild,
@@ -491,8 +491,8 @@ function PlansPanel() {
                   },
                 ];
                 return (
-                  <>
-                    <tr key={plan.id} className={plan.isActive ? "" : "opacity-60"}>
+                  <Fragment key={plan.id}>
+                    <tr className={plan.isActive ? "" : "opacity-60"}>
                       <td>
                         <div className="flex flex-col gap-0.5">
                           <span className="font-medium">{plan.displayName}</span>
@@ -575,7 +575,7 @@ function PlansPanel() {
                         </td>
                       </tr>
                     ) : null}
-                  </>
+                  </Fragment>
                 );
               })}
             </tbody>

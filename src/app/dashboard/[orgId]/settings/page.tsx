@@ -165,25 +165,38 @@ function AccountTab() {
     <div className="col gap-4">
       <SectionCard title="Profile" sub="Your name and avatar appear on every comment and audit entry">
         <div className="flex items-center gap-4 mb-5">
-          {/* eslint-disable-next-line @next/next/no-img-element */}
-          <img
-            src={user.imageUrl}
-            alt=""
-            width={72}
-            height={72}
-            className="w-[72px] h-[72px] rounded-full object-cover border border-border"
-          />
+          {user.hasImage && user.imageUrl ? (
+            // eslint-disable-next-line @next/next/no-img-element
+            <img
+              src={user.imageUrl}
+              alt=""
+              width={72}
+              height={72}
+              className="w-[72px] h-[72px] rounded-full object-cover border border-border"
+            />
+          ) : (
+            <div
+              className="w-[72px] h-[72px] rounded-full border border-border grid place-items-center text-white font-semibold text-xl"
+              style={{
+                background: `linear-gradient(135deg, var(--primary), oklch(0.4 0.1 40))`,
+              }}
+            >
+              {(user.firstName ?? user.fullName ?? primaryEmail ?? "?")[0]?.toUpperCase()}
+            </div>
+          )}
           <div className="flex-1">
             <div className="text-[13px] font-medium">
               {user.fullName ?? primaryEmail ?? "Your profile photo"}
             </div>
             <div className="faint text-xs mt-0.5">
-              PNG or JPG, square-crop works best.
+              {user.hasImage
+                ? "Current photo. Upload a new one to replace it."
+                : "No photo uploaded — PNG or JPG (square) works best."}
             </div>
           </div>
           <label className="btn btn--ghost btn--sm">
             <Icon name="upload" size={12} />
-            {uploading ? "Uploading…" : "Change"}
+            {uploading ? "Uploading…" : user.hasImage ? "Change" : "Upload"}
             <input
               type="file"
               accept="image/png,image/jpeg"
@@ -431,23 +444,39 @@ function OrganizationTab() {
         sub="Name and slug shown to teammates and in assistant hostnames"
       >
         <div className="flex items-center gap-4 mb-5">
-          {/* eslint-disable-next-line @next/next/no-img-element */}
-          <img
-            src={organization.imageUrl}
-            alt=""
-            width={64}
-            height={64}
-            className="w-16 h-16 rounded-xl object-cover border border-border bg-muted"
-          />
+          {organization.hasImage && organization.imageUrl ? (
+            // eslint-disable-next-line @next/next/no-img-element
+            <img
+              src={organization.imageUrl}
+              alt=""
+              width={64}
+              height={64}
+              className="w-16 h-16 rounded-xl object-cover border border-border bg-muted"
+            />
+          ) : (
+            // Fall back to the design's gradient tile with the org initial so
+            // an org without a custom Clerk logo doesn't display the Clerk
+            // default silhouette.
+            <div
+              className="w-16 h-16 rounded-xl border border-border grid place-items-center text-white font-semibold text-xl"
+              style={{
+                background: `linear-gradient(135deg, var(--primary), oklch(0.4 0.1 40))`,
+              }}
+            >
+              {organization.name?.[0]?.toUpperCase() ?? "?"}
+            </div>
+          )}
           <div className="flex-1">
             <div className="text-[13px] font-medium">Organization logo</div>
             <div className="faint text-xs mt-0.5">
-              PNG or JPG, square. Shows up in the switcher and on invites.
+              {organization.hasImage
+                ? "Current logo. Upload a new one to replace it."
+                : "No logo uploaded — we're showing an auto-generated tile. Upload a PNG or JPG (square) to replace it."}
             </div>
           </div>
           <label className="btn btn--ghost btn--sm">
             <Icon name="upload" size={12} />
-            {uploading ? "Uploading…" : "Change"}
+            {uploading ? "Uploading…" : organization.hasImage ? "Change" : "Upload"}
             <input
               type="file"
               accept="image/png,image/jpeg"
