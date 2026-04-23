@@ -1,104 +1,8 @@
 "use client";
 
-import { use, useCallback, useEffect, useState, type ReactNode } from "react";
+import { use } from "react";
 import Link from "next/link";
-import { useRpc } from "@/hooks/use-rpc";
-import {
-  SectionCard,
-  Icon,
-  CodeBlock,
-  Callout,
-  type IconName,
-} from "@/components/dashboard";
-
-function slugifyAssistantName(name: string) {
-  return name.replace(/[^a-z0-9]+/gi, "-").toLowerCase();
-}
-
-// The connect instructions diverge on access mode. SSH needs chmod + the
-// tunnel command; Tailscale is just a hostname in a browser. Both branches
-// fall back to a parametric template when we don't yet know which assistant
-// the reader owns.
-function connectStepBody(running: Assistant | undefined): ReactNode {
-  if (!running) {
-    return (
-      <>
-        <div className="mb-2.5">
-          Once your assistant is live, this step shows the exact command or URL for
-          connecting — it depends on the access mode you picked at deploy time:
-        </div>
-        <ul className="ml-[18px] mb-2.5 text-[13px] leading-[1.6]">
-          <li>
-            <b>SSH tunnel</b> — run a one-liner locally, then open{" "}
-            <span className="mono">http://localhost:8888</span>.
-          </li>
-          <li>
-            <b>Tailscale Serve</b> — no tunnel. Open{" "}
-            <span className="mono">https://&lt;your-hostname&gt;</span> once you&rsquo;re
-            on the tailnet.
-          </li>
-        </ul>
-      </>
-    );
-  }
-
-  if (running.accessMode === "ssh") {
-    const keyFile = `${slugifyAssistantName(running.name)}.pem`;
-    const ip = running.ipv4 ?? "<ip>";
-    const port = running.gatewayPort ?? 8443;
-    return (
-      <>
-        <div className="mb-2.5">
-          Tunnel into the gateway on <span className="mono">{running.name}</span> using the SSH
-          private key you downloaded from the Access tab.
-        </div>
-        <CodeBlock code={`chmod 400 ${keyFile}`} />
-        <div className="h-2" />
-        <CodeBlock code={`ssh -i ${keyFile} -N -L 8888:localhost:${port} root@${ip}`} />
-        <div className="faint text-xs mt-2">
-          Keep the tunnel open and point your client at{" "}
-          <span className="mono">http://localhost:8888</span>.
-        </div>
-      </>
-    );
-  }
-
-  // tailscale_serve
-  const hostname = running.hostname ?? `${slugifyAssistantName(running.name)}.tail-scale.ts.net`;
-  return (
-    <>
-      <div className="mb-2.5">
-        <span className="mono">{running.name}</span> is served over Tailscale Serve — no public
-        ports, no tunnel. Join your tailnet, then hit the assistant&rsquo;s hostname directly.
-      </div>
-      <CodeBlock code="tailscale up" />
-      <div className="h-2" />
-      <CodeBlock prompt="→" code={`https://${hostname}`} />
-      <div className="faint text-xs mt-2">
-        Tailscale Serve terminates TLS and authenticates from your tailnet identity — no gateway
-        token needed in the browser.
-      </div>
-    </>
-  );
-}
-
-type AssistantStatus = "creating" | "active" | "error" | "stopped";
-type AccessMode = "ssh" | "tailscale_serve";
-type Assistant = {
-  id: string;
-  name: string;
-  status: AssistantStatus;
-  hostname: string | null;
-  ipv4: string | null;
-  gatewayPort: number | null;
-  accessMode: AccessMode;
-};
-type Credit = {
-  planId: string;
-  status: string;
-  consumedByAssistantId: string | null;
-  currentPeriodEnd: string | null;
-};
+import { Icon } from "@/components/dashboard";
 
 export default function QuickstartPage({
   params,
@@ -106,223 +10,84 @@ export default function QuickstartPage({
   params: Promise<{ orgId: string }>;
 }) {
   const { orgId } = use(params);
-  const rpc = useRpc();
-
-  const [assistants, setAssistants] = useState<Assistant[]>([]);
-  const [credits, setCredits] = useState<Credit[]>([]);
-  const [loading, setLoading] = useState(true);
-
-  const load = useCallback(async () => {
-    try {
-      const [aRes, cRes] = await Promise.all([
-        rpc.api.assistants.$get(),
-        rpc.api.credits.$get(),
-      ]);
-      if (aRes.ok) {
-        const d = (await aRes.json()) as { assistants: Assistant[] };
-        setAssistants(d.assistants);
-      }
-      if (cRes.ok) {
-        const d = (await cRes.json()) as { credits: Credit[] };
-        setCredits(d.credits);
-      }
-    } finally {
-      setLoading(false);
-    }
-  }, [rpc]);
-
-  useEffect(() => {
-    void load();
-  }, [load]);
-
-  const now = Date.now();
-  const availableCredit = credits.some(
-    (c) =>
-      c.status === "active" &&
-      !c.consumedByAssistantId &&
-      c.currentPeriodEnd &&
-      new Date(c.currentPeriodEnd).getTime() > now,
-  );
-  const hasAssistant = assistants.length > 0;
-  const hasRunning = assistants.some((a) => a.status === "active");
-  const firstRunning = assistants.find((a) => a.status === "active");
 
   const steps: {
-    state: "done" | "current" | "pending";
-    icon: IconName;
+    num: string;
     title: string;
-    body: React.ReactNode;
+    desc: string;
+    accent?: boolean;
+    cta?: { label: string; href: string; primary?: boolean };
   }[] = [
     {
-      state: availableCredit || hasAssistant ? "done" : "current",
-      icon: "tag",
-      title: "Pick a plan",
-      body: availableCredit || hasAssistant ? (
-        <div className="faint">You have a credit ready.</div>
-      ) : (
-        <>
-          <div className="mb-2.5">
-            Subscriptions = credits. One credit runs one assistant.
-          </div>
-          <Link href={`/dashboard/${orgId}/pricing`} className="btn btn--primary btn--sm">
-            <Icon name="zap" size={12} />
-            See pricing
-          </Link>
-        </>
-      ),
+      num: "01",
+      title: "Pick a plan and buy a credit",
+      desc: "Starter is $25/mo. You can cancel anytime; the first credit gets an auto-applied 7-day trial.",
+      accent: true,
+      cta: { label: "See pricing", href: `/dashboard/${orgId}/pricing`, primary: true },
     },
     {
-      state: hasAssistant
-        ? hasRunning
-          ? "done"
-          : "current"
-        : availableCredit
-          ? "current"
-          : "pending",
-      icon: "bot",
-      title: "Deploy your first assistant",
-      body: hasAssistant ? (
-        hasRunning ? (
-          <div className="faint">
-            {firstRunning ? (
-              <>
-                Running as <span className="mono">{firstRunning.hostname ?? firstRunning.name}</span>.
-              </>
-            ) : (
-              "At least one assistant is live."
-            )}
-          </div>
-        ) : (
-          <>
-            <div className="mb-2.5">
-              Your assistant is provisioning. It usually takes 2&ndash;3 minutes.
-            </div>
-            <Link href={`/dashboard/${orgId}`} className="btn btn--ghost btn--sm">
-              <Icon name="activity" size={12} />
-              Watch progress
-            </Link>
-          </>
-        )
-      ) : (
-        <>
-          <div className="mb-2.5">
-            Open the assistants page and click <b>New assistant</b> (or take the immersive wizard
-            from the empty state).
-          </div>
-          <Link href={`/dashboard/${orgId}`} className="btn btn--primary btn--sm">
-            <Icon name="plus" size={12} />
-            Go to assistants
-          </Link>
-        </>
-      ),
+      num: "02",
+      title: "Attach the credit to an assistant",
+      desc: "Choose a name, a region, and whether you want SSH or Tailscale access. We handle the rest.",
+      cta: { label: "Create assistant", href: `/dashboard/${orgId}?create=1` },
     },
     {
-      state: hasRunning ? "current" : "pending",
-      icon: "terminal",
-      title: "Connect from your terminal",
-      body: connectStepBody(firstRunning),
-    },
-    {
-      state: hasRunning ? "pending" : "pending",
-      icon: "send",
-      title: "Call it from the SDK",
-      body: (
-        <>
-          <div className="mb-2.5">
-            Use your gateway token (reveal it on the assistant&rsquo;s Connect tab) with the
-            OpenClaw SDK.
-          </div>
-          <CodeBlock
-            prompt="#"
-            code={`from openclaw import Claw
-
-claw = Claw(
-    gateway="http://localhost:8888",
-    token=$GATEWAY_TOKEN,
-)
-
-reply = claw.chat("Hello, Claw!")
-print(reply)`}
-          />
-        </>
-      ),
+      num: "03",
+      title: "Open the gateway and point OpenClaw at it",
+      desc: "Copy the SSH tunnel command (or open via Tailscale) and you're in. Your keys, your box.",
     },
   ];
 
   return (
-    <div>
-      <div className="page__head">
-        <div>
-          <h1 className="page__title">
-            Quickstart{" "}
-            <span className="accent font-[var(--font-instrument-serif)]">
-              in 4 steps
-            </span>
-          </h1>
-          <div className="page__sub">
-            From empty workspace to running assistant. Usually takes under 5 minutes.
-          </div>
+    <div className="mx-auto my-10 max-w-[760px]">
+      <div className="mb-9 text-center">
+        <div className="mx-auto mb-5 grid size-14 place-items-center rounded-[14px] bg-primary text-white">
+          <Icon name="bot" size={28} />
         </div>
-        <div className="page__actions">
-          <Link href={`/dashboard/${orgId}/docs`} className="btn btn--ghost">
-            <Icon name="bookOpen" size={14} />
-            Full docs
-          </Link>
-        </div>
+        <h1 className="mb-2 font-[var(--font-instrument-serif)] text-[40px] font-normal leading-[1.1] tracking-[-0.02em]">
+          Welcome to <span className="text-primary">Clawbot</span>
+        </h1>
+        <p className="mx-auto max-w-[520px] text-[15px] leading-[1.55] text-muted-foreground">
+          Three steps. Five minutes. Then your agent is live on its own hardened VPS — no
+          Docker, no pasted API keys, no middleman.
+        </p>
       </div>
 
-      {loading ? null : (
-        <div className="col gap-4">
-          {!availableCredit && !hasAssistant ? (
-            <Callout kind="info" icon="info" title="You don't have any credits yet">
-              The first step below walks you through buying one.
-            </Callout>
-          ) : null}
-
-          {steps.map((s) => (
-            <SectionCard key={s.title}>
-              <div className="flex gap-4 items-start">
-                <div
-                  className="w-9 h-9 rounded-[10px] shrink-0 grid place-items-center"
-                  style={{
-                    background:
-                      s.state === "done"
-                        ? "color-mix(in oklab, var(--success) 16%, transparent)"
-                        : s.state === "current"
-                          ? "var(--db-red-dim)"
-                          : "var(--db-surface-2)",
-                    color:
-                      s.state === "done"
-                        ? "var(--success)"
-                        : s.state === "current"
-                          ? "var(--db-red)"
-                          : "var(--db-text-faint)",
-                  }}
+      <div className="flex flex-col gap-3.5">
+        {steps.map((s) => (
+          <div
+            key={s.num}
+            className={`flex gap-[18px] rounded-xl border px-[22px] py-5 ${
+              s.accent
+                ? "border-primary/30 bg-primary/15"
+                : "border-border bg-card"
+            }`}
+          >
+            <div
+              className={`w-[60px] shrink-0 font-[var(--font-instrument-serif)] text-[40px] leading-none ${
+                s.accent ? "text-primary" : "text-muted-foreground/70"
+              }`}
+            >
+              {s.num}
+            </div>
+            <div className="flex-1">
+              <div className="mb-1 text-base font-semibold">{s.title}</div>
+              <div className="dim text-[13px] leading-[1.55]">{s.desc}</div>
+            </div>
+            {s.cta ? (
+              <div className="self-center">
+                <Link
+                  href={s.cta.href}
+                  className={`btn ${s.cta.primary ? "btn--primary" : "btn--ghost"}`}
                 >
-                  <Icon name={s.state === "done" ? "check" : s.icon} size={16} />
-                </div>
-                <div className="flex-1 min-w-0">
-                  <div
-                    className={`text-[15px] font-semibold mb-2 ${s.state === "pending" ? "text-muted-foreground" : "text-foreground"}`}
-                  >
-                    {s.title}
-                    {s.state === "done" ? (
-                      <span className="pill pill--active ml-2.5">
-                        Done
-                      </span>
-                    ) : s.state === "current" ? (
-                      <span className="pill pill--info ml-2.5">
-                        Next
-                      </span>
-                    ) : null}
-                  </div>
-                  <div className="text-[13px] leading-[1.6]">{s.body}</div>
-                </div>
+                  {s.cta.primary ? <Icon name="zap" size={14} /> : null}
+                  {s.cta.label}
+                </Link>
               </div>
-            </SectionCard>
-          ))}
-        </div>
-      )}
+            ) : null}
+          </div>
+        ))}
+      </div>
     </div>
   );
 }
