@@ -2,38 +2,31 @@
 
 import { desc, eq } from "drizzle-orm";
 import { start } from "workflow/api";
-import { auth, clerkClient } from "@clerk/nextjs/server";
 import { db } from "@/lib/db";
 import { snapshots, plans, assistantCredits } from "@/lib/db/schema";
 import type { CreditStatus } from "@/lib/db/schema";
 import { buildSnapshot } from "@/lib/workflows/bootstrap";
 import { deleteSnapshot } from "@/lib/workflows/snapshot-deletion";
 import { invalidatePlanCache } from "@/lib/plans/catalog";
-
-async function requirePlatformAdmin() {
-  const { userId } = await auth();
-  if (!userId) throw new Error("Unauthorized");
-  const client = await clerkClient();
-  const user = await client.users.getUser(userId);
-  if ((user.publicMetadata as { role?: string })?.role !== "admin") {
-    throw new Error("Forbidden — platform admin required");
-  }
-}
+import { requirePlatformAdmin } from "@/lib/auth/platform-admin";
 
 // ─── Snapshots ────────────────────────────────────────────────────────────────
 
 export async function getSnapshots() {
+  await requirePlatformAdmin();
   return db.query.snapshots.findMany({
     orderBy: desc(snapshots.createdAt),
   });
 }
 
 export async function triggerSnapshotBuild(version: string, openclawVersion: string) {
+  await requirePlatformAdmin();
   const run = await start(buildSnapshot, [version, openclawVersion]);
   return { runId: run.runId };
 }
 
 export async function triggerSnapshotDelete(snapshotId: string) {
+  await requirePlatformAdmin();
   const run = await start(deleteSnapshot, [snapshotId]);
   return { runId: run.runId };
 }
