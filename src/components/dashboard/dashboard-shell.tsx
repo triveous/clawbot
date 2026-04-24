@@ -17,9 +17,11 @@ import { NewOrgDialog } from "./new-org-dialog";
  */
 export function DashboardShell({
   orgId,
+  isPlatformAdmin = false,
   children,
 }: {
   orgId: string;
+  isPlatformAdmin?: boolean;
   children: ReactNode;
 }) {
   const router = useRouter();
@@ -52,6 +54,7 @@ export function DashboardShell({
       <div className="app">
         <Sidebar
           orgId={orgId}
+          isPlatformAdmin={isPlatformAdmin}
           onNewOrg={() => setNewOrgOpen(true)}
           onOpenPalette={() => setPaletteOpen(true)}
         />

@@ -101,14 +101,39 @@ const NAV: NavItem[] = [
 
 export function Sidebar({
   orgId,
+  isPlatformAdmin = false,
   onNewOrg,
   onOpenPalette,
 }: {
   orgId: string;
+  isPlatformAdmin?: boolean;
   onNewOrg: () => void;
   onOpenPalette?: () => void;
 }) {
   const pathname = usePathname() ?? "";
+
+  // Hide staff-only items (and any section header that would be left orphaned)
+  // from non-admins. A section is kept only if at least one link after it
+  // survives the filter.
+  const visibleNav: NavItem[] = [];
+  for (let i = 0; i < NAV.length; i++) {
+    const item = NAV[i];
+    if (item.kind === "section") {
+      let hasVisibleChild = false;
+      for (let j = i + 1; j < NAV.length; j++) {
+        const next = NAV[j];
+        if (next.kind === "section") break;
+        if (!next.staff || isPlatformAdmin) {
+          hasVisibleChild = true;
+          break;
+        }
+      }
+      if (hasVisibleChild) visibleNav.push(item);
+      continue;
+    }
+    if (item.staff && !isPlatformAdmin) continue;
+    visibleNav.push(item);
+  }
 
   return (
     <aside className="sidebar">
@@ -128,7 +153,7 @@ export function Sidebar({
       <OrgSwitcher orgId={orgId} onNewOrg={onNewOrg} />
 
       <nav className="nav">
-        {NAV.map((item, idx) => {
+        {visibleNav.map((item, idx) => {
           if (item.kind === "section") {
             return (
               <div key={`sec-${idx}`} className="nav__section">
