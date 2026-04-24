@@ -1,52 +1,52 @@
 import {
   index,
   integer,
-  pgEnum,
-  pgTable,
+  sqliteTable,
   text,
-  timestamp,
-  uuid,
-} from "drizzle-orm/pg-core";
+} from "drizzle-orm/sqlite-core";
 import { organizations } from "./organizations";
 import { subscriptions } from "./subscriptions";
 
-export const invoiceStatusEnum = pgEnum("invoice_status", [
+export const INVOICE_STATUSES = [
   "draft",
   "open",
   "paid",
   "uncollectible",
   "void",
-]);
+] as const;
+export type InvoiceStatus = (typeof INVOICE_STATUSES)[number];
 
-export const invoices = pgTable(
+export const invoices = sqliteTable(
   "invoices",
   {
-    id: uuid("id").primaryKey().defaultRandom(),
+    id: text("id").primaryKey().$defaultFn(() => crypto.randomUUID()),
     orgId: text("org_id")
       .notNull()
       .references(() => organizations.id, { onDelete: "cascade" }),
-    subscriptionId: uuid("subscription_id").references(() => subscriptions.id, {
+    subscriptionId: text("subscription_id").references(() => subscriptions.id, {
       onDelete: "set null",
     }),
     stripeInvoiceId: text("stripe_invoice_id").notNull().unique(),
     stripeCustomerId: text("stripe_customer_id").notNull(),
     number: text("number"),
-    status: invoiceStatusEnum("status").notNull().default("draft"),
+    status: text("status", { enum: INVOICE_STATUSES })
+      .notNull()
+      .default("draft"),
     amountDue: integer("amount_due").notNull().default(0),
     amountPaid: integer("amount_paid").notNull().default(0),
     currency: text("currency").notNull().default("usd"),
-    periodStart: timestamp("period_start", { withTimezone: true }),
-    periodEnd: timestamp("period_end", { withTimezone: true }),
+    periodStart: integer("period_start", { mode: "timestamp" }),
+    periodEnd: integer("period_end", { mode: "timestamp" }),
     hostedInvoiceUrl: text("hosted_invoice_url"),
     invoicePdf: text("invoice_pdf"),
-    issuedAt: timestamp("issued_at", { withTimezone: true }),
-    paidAt: timestamp("paid_at", { withTimezone: true }),
-    createdAt: timestamp("created_at", { withTimezone: true })
+    issuedAt: integer("issued_at", { mode: "timestamp" }),
+    paidAt: integer("paid_at", { mode: "timestamp" }),
+    createdAt: integer("created_at", { mode: "timestamp" })
       .notNull()
-      .defaultNow(),
-    updatedAt: timestamp("updated_at", { withTimezone: true })
+      .$defaultFn(() => new Date()),
+    updatedAt: integer("updated_at", { mode: "timestamp" })
       .notNull()
-      .defaultNow()
+      .$defaultFn(() => new Date())
       .$onUpdate(() => new Date()),
   },
   (t) => [
@@ -57,4 +57,3 @@ export const invoices = pgTable(
 
 export type Invoice = typeof invoices.$inferSelect;
 export type NewInvoice = typeof invoices.$inferInsert;
-export type InvoiceStatus = (typeof invoiceStatusEnum.enumValues)[number];

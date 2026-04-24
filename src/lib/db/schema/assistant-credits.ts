@@ -1,60 +1,64 @@
 import {
   index,
-  pgEnum,
-  pgTable,
+  integer,
+  sqliteTable,
   text,
-  timestamp,
-  uuid,
-} from "drizzle-orm/pg-core";
+} from "drizzle-orm/sqlite-core";
 import { organizations } from "./organizations";
 import { plans } from "./plans";
 import { assistants } from "./assistants";
 import { subscriptions } from "./subscriptions";
 
-export const creditStatusEnum = pgEnum("credit_status", [
+export const CREDIT_STATUSES = [
   "incomplete",
   "trialing",
   "active",
   "past_due",
   "canceled",
   "expired",
-]);
+] as const;
+export type CreditStatus = (typeof CREDIT_STATUSES)[number];
 
-export const assistantCredits = pgTable(
+export const assistantCredits = sqliteTable(
   "assistant_credits",
   {
-    id: uuid("id").primaryKey().defaultRandom(),
+    id: text("id").primaryKey().$defaultFn(() => crypto.randomUUID()),
     orgId: text("org_id")
       .notNull()
       .references(() => organizations.id, { onDelete: "cascade" }),
-    planId: uuid("plan_id")
+    planId: text("plan_id")
       .notNull()
       .references(() => plans.id),
-    status: creditStatusEnum("status").notNull().default("incomplete"),
+    status: text("status", { enum: CREDIT_STATUSES })
+      .notNull()
+      .default("incomplete"),
     source: text("source").notNull().default("stripe"),
-    subscriptionId: uuid("subscription_id").references(() => subscriptions.id, {
+    subscriptionId: text("subscription_id").references(() => subscriptions.id, {
       onDelete: "set null",
     }),
     externalSubscriptionId: text("external_subscription_id").unique(),
-    currentPeriodStart: timestamp("current_period_start", {
-      withTimezone: true,
-    }),
-    currentPeriodEnd: timestamp("current_period_end", { withTimezone: true }),
-    consumedByAssistantId: uuid("consumed_by_assistant_id").references(
+    currentPeriodStart: integer("current_period_start", { mode: "timestamp" }),
+    currentPeriodEnd: integer("current_period_end", { mode: "timestamp" }),
+    consumedByAssistantId: text("consumed_by_assistant_id").references(
       () => assistants.id,
       { onDelete: "set null" },
     ),
-    createdAt: timestamp("created_at", { withTimezone: true })
+    createdAt: integer("created_at", { mode: "timestamp" })
       .notNull()
-      .defaultNow(),
-    updatedAt: timestamp("updated_at", { withTimezone: true })
+      .$defaultFn(() => new Date()),
+    updatedAt: integer("updated_at", { mode: "timestamp" })
       .notNull()
-      .defaultNow()
+      .$defaultFn(() => new Date())
       .$onUpdate(() => new Date()),
   },
-  (t) => [index("assistant_credits_org_status_plan_idx").on(t.orgId, t.status, t.planId)],
+  (t) => [
+    index("assistant_credits_org_status_plan_idx").on(
+      t.orgId,
+      t.status,
+      t.planId,
+    ),
+  ],
 );
 
 export type AssistantCredit = typeof assistantCredits.$inferSelect;
 export type NewAssistantCredit = typeof assistantCredits.$inferInsert;
-export type CreditStatus = (typeof creditStatusEnum.enumValues)[number];

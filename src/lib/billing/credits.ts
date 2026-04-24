@@ -1,14 +1,15 @@
 import { and, eq, gt, isNull, sql } from "drizzle-orm";
-import type { PgTransaction } from "drizzle-orm/pg-core";
-import type { PostgresJsQueryResultHKT } from "drizzle-orm/postgres-js";
 import type { ExtractTablesWithRelations } from "drizzle-orm";
+import type { SQLiteTransaction } from "drizzle-orm/sqlite-core";
+import type { ResultSet } from "@libsql/client";
 import { db } from "@/lib/db";
 import { assistantCredits, plans } from "@/lib/db/schema";
 import type * as schema from "@/lib/db/schema";
 import type { CreditStatus } from "@/lib/db/schema";
 
-type Tx = PgTransaction<
-  PostgresJsQueryResultHKT,
+type Tx = SQLiteTransaction<
+  "async",
+  ResultSet,
   typeof schema,
   ExtractTablesWithRelations<typeof schema>
 >;

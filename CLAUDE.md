@@ -18,20 +18,20 @@ SnapClaw is a **managed hosting platform for OpenClaw personal AI agents**. We a
 
 ## Tech Stack
 
-| Concern     | Tool                               | Notes                                                                        |
-| ----------- | ---------------------------------- | ---------------------------------------------------------------------------- |
-| Framework   | Next.js 16 (App Router)            | See AGENTS.md — read docs before writing code                                |
-| API         | Hono 4 at `/api/[[...route]]`      | `hono/vercel` adapter, RPC via `hc<AppType>`                                 |
-| ORM         | Drizzle ORM + `postgres` driver    | 5 tables: users, assistants, assistant_credentials, subscriptions, snapshots |
-| Database    | Neon PostgreSQL                    | `bun run db:push` for schema changes in dev                                  |
-| Auth        | Clerk (`@clerk/nextjs` v7)         | ClerkProvider in root layout, `clerkMiddleware` in middleware.ts             |
-| Billing     | Stripe                             | Subscriptions per assistant, not per account                                 |
-| UI          | shadcn/ui + Magic UI + Tailwind v4 | Linear-like aesthetic                                                        |
-| Fonts       | Geist Sans + Geist Mono            | Applied to both app and Clerk components via `appearance` prop               |
-| Testing     | Vitest (unit) + Playwright (E2E)   | Tests in `tests/unit/` and `tests/e2e/`                                      |
-| Async tasks | useworkflow.dev                    | Only for genuinely async work (VPS provisioning); not forced elsewhere       |
-| Infra       | Hetzner Cloud                      | Snapshot-based provisioning, provider-abstracted schema                      |
-| Deploy      | Vercel                             |                                                                              |
+| Concern     | Tool                               | Notes                                                                                |
+| ----------- | ---------------------------------- | ------------------------------------------------------------------------------------ |
+| Framework   | Next.js 16 (App Router)            | See AGENTS.md — read docs before writing code                                        |
+| API         | Hono 4 at `/api/[[...route]]`      | `hono/vercel` adapter, RPC via `hc<AppType>`                                         |
+| ORM         | Drizzle ORM + `@libsql/client`     | 11 tables — see Database Schema section below                                        |
+| Database    | Turso (remote libSQL)              | `bun run db:push` for schema changes; env: `TURSO_DATABASE_URL` + `TURSO_AUTH_TOKEN` |
+| Auth        | Clerk (`@clerk/nextjs` v7)         | ClerkProvider in root layout, `clerkMiddleware` in middleware.ts                     |
+| Billing     | Stripe                             | Subscriptions per assistant, not per account                                         |
+| UI          | shadcn/ui + Magic UI + Tailwind v4 | Linear-like aesthetic                                                                |
+| Fonts       | Geist Sans + Geist Mono            | Applied to both app and Clerk components via `appearance` prop                       |
+| Testing     | Vitest (unit) + Playwright (E2E)   | Tests in `tests/unit/` and `tests/e2e/`                                              |
+| Async tasks | useworkflow.dev                    | Only for genuinely async work (VPS provisioning); not forced elsewhere               |
+| Infra       | Hetzner Cloud                      | Snapshot-based provisioning, provider-abstracted schema                              |
+| Deploy      | Vercel                             |                                                                                      |
 
 ---
 
@@ -52,7 +52,7 @@ src/
   lib/
     db/
       schema/             # users, assistants, assistant-credentials, subscriptions, snapshots
-      index.ts            # Drizzle client — throws if DATABASE_URL missing
+      index.ts            # Drizzle client — throws if TURSO_DATABASE_URL or TURSO_AUTH_TOKEN missing
     auth/clerk-webhook.ts # Clerk webhook handlers (user CRUD)
     stripe/stubs.ts       # canProvision() stub — Phase 5 replaces
   types/                  # Shared types: AgentStatus, Provider, PlanId, ChannelType
@@ -117,7 +117,8 @@ Login and sign-up use **catch-all routes** for Clerk multi-step flows:
 
 See `.env.example` for all required vars. Key ones:
 
-- `DATABASE_URL` — Neon PostgreSQL connection string
+- `TURSO_DATABASE_URL` — Turso remote libSQL URL (`libsql://<db>-<org>.turso.io`)
+- `TURSO_AUTH_TOKEN` — Turso database auth token
 - `NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY` + `CLERK_SECRET_KEY` + `CLERK_WEBHOOK_SECRET`
 - `NEXT_PUBLIC_CLERK_SIGN_IN_URL=/login`
 - `NEXT_PUBLIC_CLERK_SIGN_UP_URL=/sign-up`

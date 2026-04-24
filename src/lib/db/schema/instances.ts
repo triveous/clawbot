@@ -1,47 +1,46 @@
 import {
   integer,
-  pgEnum,
-  pgTable,
+  sqliteTable,
   text,
-  timestamp,
-  uuid,
-} from "drizzle-orm/pg-core";
-import { assistants, providerEnum } from "./assistants";
+} from "drizzle-orm/sqlite-core";
+import { assistants, PROVIDERS } from "./assistants";
 
-export const instanceStatusEnum = pgEnum("instance_status", [
+export const INSTANCE_STATUSES = [
   "creating",
   "provisioning",
   "running",
   "stopped",
   "error",
   "destroyed",
-]);
+] as const;
+export type InstanceStatus = (typeof INSTANCE_STATUSES)[number];
 
-export const instances = pgTable("instances", {
-  id: uuid("id").primaryKey().defaultRandom(),
-  assistantId: uuid("assistant_id")
+export const instances = sqliteTable("instances", {
+  id: text("id").primaryKey().$defaultFn(() => crypto.randomUUID()),
+  assistantId: text("assistant_id")
     .notNull()
     .references(() => assistants.id, { onDelete: "cascade" }),
-  provider: providerEnum("provider").notNull().default("hetzner"),
+  provider: text("provider", { enum: PROVIDERS }).notNull().default("hetzner"),
   providerServerId: text("provider_server_id"),
   providerSnapshotId: text("provider_snapshot_id").notNull(),
   firewallId: text("firewall_id"),
   ipv4: text("ipv4"),
   region: text("region").notNull(),
   gatewayPort: integer("gateway_port"),
-  status: instanceStatusEnum("status").notNull().default("creating"),
+  status: text("status", { enum: INSTANCE_STATUSES })
+    .notNull()
+    .default("creating"),
   lastError: text("last_error"),
   workflowRunId: text("workflow_run_id"),
-  destroyedAt: timestamp("destroyed_at", { withTimezone: true }),
-  createdAt: timestamp("created_at", { withTimezone: true })
+  destroyedAt: integer("destroyed_at", { mode: "timestamp" }),
+  createdAt: integer("created_at", { mode: "timestamp" })
     .notNull()
-    .defaultNow(),
-  updatedAt: timestamp("updated_at", { withTimezone: true })
+    .$defaultFn(() => new Date()),
+  updatedAt: integer("updated_at", { mode: "timestamp" })
     .notNull()
-    .defaultNow()
+    .$defaultFn(() => new Date())
     .$onUpdate(() => new Date()),
 });
 
 export type Instance = typeof instances.$inferSelect;
 export type NewInstance = typeof instances.$inferInsert;
-export type InstanceStatus = (typeof instanceStatusEnum.enumValues)[number];
