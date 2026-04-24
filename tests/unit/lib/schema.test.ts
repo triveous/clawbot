@@ -48,8 +48,8 @@ describe("Database Schema", () => {
     expect(getTableName(schema.assistantCredentials)).toBe("assistant_credentials");
   });
 
-  it("should export assistant status enum values", () => {
-    expect(schema.assistantStatusEnum.enumValues).toEqual([
+  it("should export assistant status values", () => {
+    expect(schema.ASSISTANT_STATUSES).toEqual([
       "creating",
       "active",
       "error",
@@ -57,8 +57,8 @@ describe("Database Schema", () => {
     ]);
   });
 
-  it("should export instance status enum values", () => {
-    expect(schema.instanceStatusEnum.enumValues).toEqual([
+  it("should export instance status values", () => {
+    expect(schema.INSTANCE_STATUSES).toEqual([
       "creating",
       "provisioning",
       "running",
@@ -68,12 +68,12 @@ describe("Database Schema", () => {
     ]);
   });
 
-  it("should export provider enum values", () => {
-    expect(schema.providerEnum.enumValues).toEqual(["hetzner"]);
+  it("should export provider values", () => {
+    expect(schema.PROVIDERS).toEqual(["hetzner"]);
   });
 
-  it("should export credit status enum values", () => {
-    expect(schema.creditStatusEnum.enumValues).toEqual([
+  it("should export credit status values", () => {
+    expect(schema.CREDIT_STATUSES).toEqual([
       "incomplete",
       "trialing",
       "active",

@@ -1,9 +1,9 @@
-import { integer, pgTable, text, timestamp, uuid } from "drizzle-orm/pg-core";
+import { integer, sqliteTable, text } from "drizzle-orm/sqlite-core";
 import { assistants } from "./assistants";
 
-export const assistantCredentials = pgTable("assistant_credentials", {
-  id: uuid("id").primaryKey().defaultRandom(),
-  assistantId: uuid("assistant_id")
+export const assistantCredentials = sqliteTable("assistant_credentials", {
+  id: text("id").primaryKey().$defaultFn(() => crypto.randomUUID()),
+  assistantId: text("assistant_id")
     .notNull()
     .unique()
     .references(() => assistants.id, { onDelete: "cascade" }),
@@ -16,9 +16,9 @@ export const assistantCredentials = pgTable("assistant_credentials", {
   gatewayToken: text("gateway_token").notNull(),
   // Randomized per assistant in prepareCredentials (range 20000–29999).
   gatewayPort: integer("gateway_port").notNull().default(18789),
-  createdAt: timestamp("created_at", { withTimezone: true })
+  createdAt: integer("created_at", { mode: "timestamp" })
     .notNull()
-    .defaultNow(),
+    .$defaultFn(() => new Date()),
 });
 
 export type AssistantCredentials = typeof assistantCredentials.$inferSelect;

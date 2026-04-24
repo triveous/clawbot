@@ -58,8 +58,11 @@ export async function getPlanByStripePriceId(
     .select()
     .from(plans)
     .where(
-      sql`(${plans.billingProviderIds} ->> 'stripePriceId') = ${priceId}
-          OR (${plans.billingProviderIds} -> 'archivedPriceIds') ? ${priceId}`,
+      sql`json_extract(${plans.billingProviderIds}, '$.stripePriceId') = ${priceId}
+          OR EXISTS (
+            SELECT 1 FROM json_each(json_extract(${plans.billingProviderIds}, '$.archivedPriceIds'))
+            WHERE value = ${priceId}
+          )`,
     )
     .limit(1);
   return row ?? null;

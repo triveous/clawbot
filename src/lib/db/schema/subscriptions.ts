@@ -1,16 +1,13 @@
 import {
-  boolean,
   index,
-  pgEnum,
-  pgTable,
+  integer,
+  sqliteTable,
   text,
-  timestamp,
-  uuid,
-} from "drizzle-orm/pg-core";
+} from "drizzle-orm/sqlite-core";
 import { organizations } from "./organizations";
 import { plans } from "./plans";
 
-export const subscriptionStatusEnum = pgEnum("subscription_status", [
+export const SUBSCRIPTION_STATUSES = [
   "incomplete",
   "incomplete_expired",
   "trialing",
@@ -18,34 +15,37 @@ export const subscriptionStatusEnum = pgEnum("subscription_status", [
   "past_due",
   "canceled",
   "unpaid",
-]);
+] as const;
+export type SubscriptionStatus = (typeof SUBSCRIPTION_STATUSES)[number];
 
-export const subscriptions = pgTable(
+export const subscriptions = sqliteTable(
   "subscriptions",
   {
-    id: uuid("id").primaryKey().defaultRandom(),
+    id: text("id").primaryKey().$defaultFn(() => crypto.randomUUID()),
     orgId: text("org_id")
       .notNull()
       .references(() => organizations.id, { onDelete: "cascade" }),
-    planId: uuid("plan_id")
+    planId: text("plan_id")
       .notNull()
       .references(() => plans.id),
     stripeSubscriptionId: text("stripe_subscription_id").notNull().unique(),
     stripeCustomerId: text("stripe_customer_id").notNull(),
     stripeScheduleId: text("stripe_schedule_id"),
-    status: subscriptionStatusEnum("status").notNull().default("incomplete"),
-    currentPeriodStart: timestamp("current_period_start", {
-      withTimezone: true,
-    }),
-    currentPeriodEnd: timestamp("current_period_end", { withTimezone: true }),
-    cancelAtPeriodEnd: boolean("cancel_at_period_end").notNull().default(false),
-    canceledAt: timestamp("canceled_at", { withTimezone: true }),
-    createdAt: timestamp("created_at", { withTimezone: true })
+    status: text("status", { enum: SUBSCRIPTION_STATUSES })
       .notNull()
-      .defaultNow(),
-    updatedAt: timestamp("updated_at", { withTimezone: true })
+      .default("incomplete"),
+    currentPeriodStart: integer("current_period_start", { mode: "timestamp" }),
+    currentPeriodEnd: integer("current_period_end", { mode: "timestamp" }),
+    cancelAtPeriodEnd: integer("cancel_at_period_end", { mode: "boolean" })
       .notNull()
-      .defaultNow()
+      .default(false),
+    canceledAt: integer("canceled_at", { mode: "timestamp" }),
+    createdAt: integer("created_at", { mode: "timestamp" })
+      .notNull()
+      .$defaultFn(() => new Date()),
+    updatedAt: integer("updated_at", { mode: "timestamp" })
+      .notNull()
+      .$defaultFn(() => new Date())
       .$onUpdate(() => new Date()),
   },
   (t) => [index("subscriptions_org_status_idx").on(t.orgId, t.status)],
@@ -53,5 +53,3 @@ export const subscriptions = pgTable(
 
 export type Subscription = typeof subscriptions.$inferSelect;
 export type NewSubscription = typeof subscriptions.$inferInsert;
-export type SubscriptionStatus =
-  (typeof subscriptionStatusEnum.enumValues)[number];

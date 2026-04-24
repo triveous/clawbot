@@ -1,23 +1,21 @@
 import {
-  boolean,
-  pgTable,
+  integer,
+  sqliteTable,
   text,
-  timestamp,
-  uuid,
-} from "drizzle-orm/pg-core";
-import { providerEnum } from "./assistants";
+} from "drizzle-orm/sqlite-core";
+import { PROVIDERS } from "./assistants";
 
-export const snapshots = pgTable("snapshots", {
-  id: uuid("id").primaryKey().defaultRandom(),
-  provider: providerEnum("provider").notNull().default("hetzner"),
+export const snapshots = sqliteTable("snapshots", {
+  id: text("id").primaryKey().$defaultFn(() => crypto.randomUUID()),
+  provider: text("provider", { enum: PROVIDERS }).notNull().default("hetzner"),
   providerSnapshotId: text("provider_snapshot_id").notNull(),
   version: text("version").notNull(),
   openclawVersion: text("openclaw_version").notNull(),
   description: text("description"),
-  isActive: boolean("is_active").notNull().default(false),
-  createdAt: timestamp("created_at", { withTimezone: true })
+  isActive: integer("is_active", { mode: "boolean" }).notNull().default(false),
+  createdAt: integer("created_at", { mode: "timestamp" })
     .notNull()
-    .defaultNow(),
+    .$defaultFn(() => new Date()),
 });
 
 export type Snapshot = typeof snapshots.$inferSelect;
